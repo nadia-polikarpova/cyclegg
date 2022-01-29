@@ -3,20 +3,26 @@ use egg::{*, rewrite as rw};
 mod goal;
 use goal::{*};
 
-fn proof_step(state: &mut ProofState) {
-  // Pop the first subgoal
-  let mut goal = state.pop().unwrap();
-  // Saturate the goal
-  goal = goal.saturate();
-  if goal.done() {
-    // If this goal has been discharged, we're done
-    return
-  } else {
-    // Otherwise, we need to case-split on a variable
-    goal.case_split(state)
+fn prove(mut goal: Goal) -> bool {
+  let mut state = vec![goal];
+  while !state.is_empty() {
+    println!("Subgoals left: {}", state.len());
+    // Pop the first subgoal
+    goal = state.pop().unwrap();
+    // Saturate the goal
+    goal = goal.saturate();
+    if !goal.done() {
+      // We need to case-split on a variable
+      if goal.can_split() {
+        goal.case_split(&mut state);        
+      } else {
+        // No more variables to case-split on: this goal is unsolvable
+        return false;
+      }    
+    }  
   }
+  true
 }
-
 
 fn main() {
   let context = Context::from([
@@ -39,14 +45,14 @@ fn main() {
   ];
 
   
-  let lhs: Expr = "(add (succ (succ zero)) (succ (succ zero)))".parse().unwrap();
-  let rhs: Expr = "(succ (succ (succ (succ zero))))".parse().unwrap();
+  // let lhs: Expr = "(add (succ (succ zero)) (succ (succ zero)))".parse().unwrap();
+  // let rhs: Expr = "(succ (succ (succ (succ zero))))".parse().unwrap();
   // let lhs: Expr = "(add (succ (succ zero)) x)".parse().unwrap();
   // let rhs: Expr = "(succ (succ x))".parse().unwrap();
-  // let lhs: Expr = "(triv x)".parse().unwrap();
-  // let rhs: Expr = "true".parse().unwrap();
+  let lhs: Expr = "(triv x)".parse().unwrap();
+  let rhs: Expr = "true".parse().unwrap();
 
-  println!("Proving: {} = {}", lhs, rhs);
+  println!("Conjecture: {} = {}", lhs, rhs);
 
   let goal = Goal::top(
     &lhs,
@@ -57,12 +63,10 @@ fn main() {
     &[Symbol::from("x")],
   );
 
-  let mut state = vec![goal];
-
-  while !state.is_empty() {
-    println!("Subgoals left: {}", state.len());
-    proof_step(&mut state);
+  let result = prove(goal);
+  if result {
+    println!("Proved!");
+  } else {
+    println!("Who knows?");
   }
-
-  println!("Verified");
 }

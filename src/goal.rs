@@ -67,6 +67,10 @@ impl<'a> Goal<'a> {
     lhs_id == rhs_id
   }
 
+  pub fn can_split(&self) -> bool {
+    !self.scrutinees.is_empty()
+  }
+
   // Saturate the goal by applying all available rewrites
   pub fn saturate(mut self) -> Self {
     let runner = Runner::default().with_egraph(self.egraph).run(self.rewrites.iter());
