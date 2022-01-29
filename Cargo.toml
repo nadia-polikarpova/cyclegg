@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 egg = "0.7.1"
+symbolic_expressions = "5.0.3"
