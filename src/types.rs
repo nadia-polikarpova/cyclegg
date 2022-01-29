@@ -11,6 +11,10 @@ impl Type {
     Self { repr }
   }
 
+  pub fn datatype(&self) -> Result<&String, SexpError> {
+    self.repr.string()
+  }
+
   pub fn args(&self) -> Vec<Type> {
     match &self.repr {
       Sexp::String(_) => vec![],  // This type is a D

@@ -38,6 +38,28 @@ pub struct Goal<'a> {
 pub type ProofState<'a> = Vec<Goal<'a>>;
 
 impl<'a> Goal<'a> {
+  pub fn top(      
+    lhs: &'a Expr,
+    rhs: &'a Expr,
+    env: &'a Env,
+    ctx: &Context,
+    rewrites: &[Rw],    
+    scrutinees: &[Symbol],
+  ) -> Self {
+    let mut egraph: Eg = Default::default();
+    egraph.add_expr(&lhs);
+    egraph.add_expr(&rhs);
+    egraph.rebuild();
+    Self {
+      egraph,
+      rewrites: rewrites.to_vec(),
+      ctx: ctx.clone(),
+      scrutinees: scrutinees.to_vec(),
+      lhs,
+      rhs,
+      env,
+    }}
+
   // Have we proven that lhs == rhs?
   pub fn done(&self) -> bool {
     let lhs_id = self.egraph.lookup_expr(self.lhs).unwrap();
@@ -53,30 +75,52 @@ impl<'a> Goal<'a> {
   }
 
   // Consume this goal and add its case splits to the proof state
-  pub fn case_split(mut self, state: &mut ProofState) {
+  pub fn case_split(mut self, state: &mut ProofState<'a>) {
     // Get the next variable to case-split on
     let var = self.scrutinees.pop().unwrap();
+    println!("case-split on {}", var);
+    let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
     // Get the type of the variable
     let ty = self.ctx.get(&var).unwrap();
+    // Convert to datatype name
+    let dt = Symbol::from(ty.datatype().unwrap());
     // Get the constructors of the datatype
-    let cons = self.env.get(&var).unwrap();
+    let cons = self.env.get(&dt).unwrap();
     // For each constructor,
     for &con in cons {
+      let mut new_goal = Goal {
+        egraph: self.egraph.clone(),
+        rewrites: self.rewrites.clone(),
+        ctx: self.ctx.clone(),
+        scrutinees: self.scrutinees.clone(),
+        lhs: self.lhs,
+        rhs: self.rhs,
+        env: self.env,
+      };
+
       // Get the type of the constructor
       let con_ty = self.ctx.get(&con).unwrap();
-      // Create a new subgoal
-      // let mut new_goal = Goal {
-      //   lhs: goal.lhs.clone(),
-      //   rhs: goal.rhs.clone(),
-      //   egraph: goal.egraph.clone(),
-      //   rewrites: goal.rewrites.clone(),
-      //   ctx: goal.ctx.clone(),
-      //   scrutinees: goal.scrutinees.clone(),
-      // };
-      // Add a rewrite to the subgoal
-      // new_goal.rewrites.push(rw::CaseSplit(var, con));
+      let con_args = con_ty.args();
+      // For each argument: create a fresh variable and add it to the context
+      let mut fresh_vars = vec![];
+      for i in 0..con_args.len() {
+        let fresh_var = Symbol::from(format!("x{}{}", self.egraph.total_size(), i));
+        new_goal.ctx.insert(fresh_var, con_args[i].clone());
+        fresh_vars.push(fresh_var);
+      }
+
+      // Create an application of the constructor to the fresh vars
+      let con_app_string = format!("({} {})", con, fresh_vars.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(" "));
+      let con_app: Expr = con_app_string.parse().unwrap();
+
+      // Add con_app to the new goal's egraph and Union union it with var
+      new_goal.egraph.add_expr(&con_app);
+      let con_app_id = new_goal.egraph.lookup_expr(&con_app).unwrap();
+      new_goal.egraph.union(var_id, con_app_id);
+      new_goal.egraph.rebuild();
+
       // Add the subgoal to the proof state
-      // state.push(new_goal);
+      state.push(new_goal);
     }
 
   }

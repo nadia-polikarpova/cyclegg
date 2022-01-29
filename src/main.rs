@@ -3,13 +3,6 @@ use egg::{*, rewrite as rw};
 mod goal;
 use goal::{*};
 
-
-
-
-// A proof state is a list of subgoals,
-// all of which have to be discharged
-type ProofState<'a> = Vec<Goal<'a>>;
-
 fn proof_step(state: &mut ProofState) {
   // Pop the first subgoal
   let mut goal = state.pop().unwrap();
@@ -24,26 +17,6 @@ fn proof_step(state: &mut ProofState) {
   }
 }
 
-// fn case_split(
-//     mut egraph: Eg,
-//     e: &Expr,
-//     ctx: &Context,
-//     env: &Env,
-// ) -> Vec<Eg> {
-//   let c = egraph.lookup_expr(e).unwrap();
-//   let mut esucc = egraph.clone();
-
-//   let c0 = egraph.add(SymbolLang::leaf("zero"));  
-//   egraph.union(c, c0);
-//   egraph.rebuild();
-
-//   let pat = format!("(succ x{})", egraph.total_size());
-//   let c1 = esucc.add_expr(&pat.parse().unwrap());
-//   esucc.union(c, c1);
-//   esucc.rebuild();
-
-//   vec![egraph, esucc]
-// }
 
 fn main() {
   let context = Context::from([
@@ -51,14 +24,10 @@ fn main() {
     (Symbol::from("zero"), "Nat".parse().unwrap()),
     (Symbol::from("succ"), "(-> (Nat) Nat)".parse().unwrap()),
     (Symbol::from("add"), "(-> (Nat Nat) Nat)".parse().unwrap()),
+    (Symbol::from("triv"), "(-> (Nat) Bool)".parse().unwrap()),
   ]);
 
-  println!("arity of Nat: {:?}", &context.get(&Symbol::from("x")).unwrap().args());
-  println!("arity of Nat -> Nat: {:?}", &context.get(&Symbol::from("succ")).unwrap().args());
-  println!("arity of Nat -> Nat -> Nat: {:?}", &context.get(&Symbol::from("add")).unwrap().args());
-  
-
-  let constructor = Env::from([
+  let env = Env::from([
     (Symbol::from("Nat"), vec![Symbol::from("zero"), Symbol::from("succ")]),
   ]);
 
@@ -69,37 +38,31 @@ fn main() {
     rw!("triv-succ"; "(triv (succ ?x))" => "true"),
   ];
 
-  let rules1: Vec<Rw> = vec![
-    rw!("add-zero"; "(add zero ?y)" => "?y"),
-    rw!("add-succ"; "(add (succ ?x) ?y)" => "(succ (add ?x ?y))"),
-    rw!("triv-zero"; "(triv zero)" => "true"),
-    rw!("triv-succ"; "(triv (succ ?x))" => "true"),
-  ];
+  
+  let lhs: Expr = "(add (succ (succ zero)) (succ (succ zero)))".parse().unwrap();
+  let rhs: Expr = "(succ (succ (succ (succ zero))))".parse().unwrap();
+  // let lhs: Expr = "(add (succ (succ zero)) x)".parse().unwrap();
+  // let rhs: Expr = "(succ (succ x))".parse().unwrap();
+  // let lhs: Expr = "(triv x)".parse().unwrap();
+  // let rhs: Expr = "true".parse().unwrap();
 
-  // let lhs: Expr = "(add (succ (succ zero)) (succ (succ zero)))".parse().unwrap();
-  // let rhs: Expr = "(succ (succ (succ (succ zero))))".parse().unwrap();
-  // let lhs: RecExpr<SymbolLang> = "(add (succ (succ zero)) x)".parse().unwrap();
-  // let rhs: RecExpr<SymbolLang> = "(succ (succ x))".parse().unwrap();
-  let lhs: RecExpr<SymbolLang> = "(triv x)".parse().unwrap();
-  let rhs: RecExpr<SymbolLang> = "true".parse().unwrap();
+  println!("Proving: {} = {}", lhs, rhs);
 
+  let goal = Goal::top(
+    &lhs,
+    &rhs,
+    &env,
+    &context,
+    rules,
+    &[Symbol::from("x")],
+  );
 
-  let mut egraph: Eg = Default::default();
-  egraph.add_expr(&lhs);
-  egraph.add_expr(&rhs);
+  let mut state = vec![goal];
 
-  // let runner = Runner::default().with_egraph(egraph).run(rules);
-  let runner = Runner::default().with_egraph(egraph).run(rules1.iter());
-  println!("e-graph size: {}", runner.egraph.number_of_classes());
-  println!("{} == {}", runner.egraph.lookup_expr(&lhs).unwrap(), runner.egraph.lookup_expr(&rhs).unwrap());
+  while !state.is_empty() {
+    println!("Subgoals left: {}", state.len());
+    proof_step(&mut state);
+  }
 
-  // let scrutinee = "x".parse().unwrap();
-  // let (egraph, esucc) = case_split(runner.egraph, &scrutinee, &context, &constructor);
-  // let runner1 = Runner::default().with_egraph(egraph).run(rules);
-  // let runner2 = Runner::default().with_egraph(esucc).run(rules);
-
-  // println!("e-graph size: {}", runner1.egraph.number_of_classes());
-  // println!("{} == {}", runner1.egraph.lookup_expr(&lhs).unwrap(), runner1.egraph.lookup_expr(&rhs).unwrap());
-  // println!("e-graph size: {}", runner2.egraph.number_of_classes());
-  // println!("{} == {}", runner2.egraph.lookup_expr(&lhs).unwrap(), runner2.egraph.lookup_expr(&rhs).unwrap());
+  println!("Verified");
 }
