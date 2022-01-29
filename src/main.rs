@@ -6,7 +6,7 @@ use goal::{*};
 fn prove(mut goal: Goal) -> bool {
   let mut state = vec![goal];
   while !state.is_empty() {
-    println!("Subgoals left: {}", state.len());
+    println!("Proof state: {}", pretty_state(&state));
     // Pop the first subgoal
     goal = state.pop().unwrap();
     // Saturate the goal
@@ -41,7 +41,9 @@ fn main() {
     rw!("add-zero"; "(add zero ?y)" => "?y"),
     rw!("add-succ"; "(add (succ ?x) ?y)" => "(succ (add ?x ?y))"),
     rw!("triv-zero"; "(triv zero)" => "true"),
-    rw!("triv-succ"; "(triv (succ ?x))" => "true"),
+    // rw!("triv-succ"; "(triv (succ ?x))" => "true"),
+    rw!("triv-succ-zero"; "(triv (succ zero))" => "true"),
+    rw!("triv-succ-succ"; "(triv (succ (succ ?x))))" => "true"),
   ];
 
   
