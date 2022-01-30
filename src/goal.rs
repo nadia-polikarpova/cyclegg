@@ -13,9 +13,9 @@ const MAX_SPLIT_DEPTH: usize = 2;
 
 // Proof goal
 pub struct Goal<'a> {
-  name: String,
+  pub name: String,
   // Equivalences we already proved
-  egraph: Eg,
+  pub egraph: Eg,
   // Rewrites that are valid for the current goal
   rewrites: Vec<Rw>,
   // Context

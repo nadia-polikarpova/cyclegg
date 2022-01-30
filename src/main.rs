@@ -13,6 +13,7 @@ fn prove(mut goal: Goal) -> bool {
     goal = state.pop().unwrap();
     // Saturate the goal
     goal = goal.saturate();
+    goal.egraph.dot().to_png(format!("target/{}.png", goal.name)).unwrap();
     if !goal.done() {
       // We need to case-split on a variable
       if goal.can_split() {
