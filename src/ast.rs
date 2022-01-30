@@ -48,6 +48,14 @@ impl Display for Type {
 // Expressions
 pub type Expr = RecExpr<SymbolLang>;
 
+pub fn var_depth(var_name: &str) -> usize {
+  var_name.matches("-").count()
+}
+
+pub fn is_descendant(var_name: &String, ancestor_name: &String) -> bool {
+  var_name.starts_with(ancestor_name) && var_name.len() > ancestor_name.len()
+}
+
 // Environment: for now just a map from datatype names to constructor names
 pub type Env = HashMap<Symbol, Vec<Symbol>>;
 
