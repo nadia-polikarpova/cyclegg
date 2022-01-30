@@ -61,3 +61,11 @@ pub fn mk_context(descr: &[(&str, &str)]) -> Context {
   }
   ctx
 }
+
+pub fn mk_env(descr: &[(&str, &str)]) -> Env {
+  let mut env = Env::new();
+  for (name, cons) in descr {
+    env.insert(Symbol::from(name), cons.split_whitespace().map(|s| Symbol::from(s)).collect());
+  }
+  env
+}
