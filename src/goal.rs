@@ -1,6 +1,6 @@
 use std::{collections::VecDeque};
 use egg::{*};
-use log::{debug};
+use log::{warn};
 
 #[path = "./ast.rs"] pub mod ast;
 #[path = "./config.rs"] pub mod config;
@@ -35,7 +35,7 @@ impl Condition<SymbolLang, ()> for SmallerVar {
     let extractor = Extractor::new(egraph, AstSize);
     let (_, expr) = extractor.find_best(target_id); // TODO: this is incomplete, we actually need "are any of the expressions in this class smaller?"
     if is_descendant(&expr.to_string(), &self.0.to_string()) {
-      debug!("applying {} lemma to {}", self.0, expr);
+      warn!("applying {} lemma to {}", self.0, expr);
       true
     } else { 
       false 
@@ -127,7 +127,7 @@ impl<'a> Goal<'a> {
     let searcher: Pattern<SymbolLang> = lhs_pattern.parse().unwrap();
     let applier: Pattern<SymbolLang> = rhs_pattern.parse().unwrap();
     let condition = SmallerVar(var);
-    debug!("creating lemma: {} => {}", searcher, applier);
+    warn!("creating lemma: {} => {}", searcher, applier);
     let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier});    
     lemma.ok()
   }
@@ -136,7 +136,7 @@ impl<'a> Goal<'a> {
   fn case_split(mut self, state: &mut ProofState<'a>) {
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
-    debug!("case-split on {}", var);
+    warn!("case-split on {}", var);
     let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
 
     let option_lemma = self.mk_lemma_rewrite(var);
@@ -224,7 +224,8 @@ pub fn pretty_state(state: &ProofState) -> String {
 pub fn prove(mut goal: Goal) -> bool {
   let mut state = vec![goal];
   while !state.is_empty() {
-    debug!("====PROOF STATE====\n:{}", pretty_state(&state));
+    // TODO: This should be info! but I don't know how to suppress all the info output from egg
+    warn!("PROOF STATE:{}", pretty_state(&state));
     // Pop the first subgoal
     goal = state.pop().unwrap();
     // Saturate the goal

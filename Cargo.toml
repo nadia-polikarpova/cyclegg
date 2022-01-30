@@ -10,3 +10,5 @@ egg = "0.7.1"
 symbolic_expressions = "5.0.3"
 lazy_static = "1.4.0"
 log = "0.4.14"
+simple_logger = "2.1.0"
+clap = { version = "3.0.13", features = ["derive"] }

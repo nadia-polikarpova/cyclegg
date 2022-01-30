@@ -1,9 +1,12 @@
 use egg::{*, rewrite as rw};
 
 pub mod goal;
-use goal::{*, ast::*};
+use goal::{*, ast::*, config::CONFIG};
+
 
 fn main() {
+  simple_logger::init_with_level(CONFIG.log_level).unwrap();
+
   let context = mk_context(&[
     ("x", "Nat"),
     ("y", "Nat"),
