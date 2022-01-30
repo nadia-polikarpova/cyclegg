@@ -30,6 +30,7 @@ fn prove(mut goal: Goal) -> bool {
 fn main() {
   let context = mk_context(&[
     ("x", "Nat"),
+    ("y", "Nat"),
     ("zero", "Nat"),
     ("succ", "(-> (Nat) Nat)"),
     // ("true", "Bool"),
@@ -59,8 +60,8 @@ fn main() {
   // let rhs: Expr = "(succ (succ x))".parse().unwrap();
   // let lhs: Expr = "(triv x)".parse().unwrap();
   // let rhs: Expr = "true".parse().unwrap();
-  let lhs: Expr = "(add x (succ zero))".parse().unwrap();
-  let rhs: Expr = "(succ x)".parse().unwrap();
+  let lhs: Expr = "(add x y)".parse().unwrap();
+  let rhs: Expr = "(add y x)".parse().unwrap();
 
   println!("Conjecture: {} = {}", lhs, rhs);
 
@@ -70,7 +71,7 @@ fn main() {
     &env,
     &context,
     rules,
-    &[Symbol::from("x")],
+    &[Symbol::from("x"), Symbol::from("y")],
   );
 
   let result = prove(goal);

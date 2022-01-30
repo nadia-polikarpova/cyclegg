@@ -189,10 +189,12 @@ impl<'a> Goal<'a> {
       new_goal.egraph.union(var_id, con_app_id);
       new_goal.egraph.rebuild();
 
-      // If we have a lemma, add it to the new goal's rewrites
-      if let Some(lemma) = option_lemma.clone() {
-        new_goal.rewrites.push(lemma);
-      }      
+      // If the constructor has parameters and we have a lemma, add it to the new goal's rewrites
+      if !fresh_vars.is_empty() {
+        if let Some(lemma) = option_lemma.clone() {
+          new_goal.rewrites.push(lemma);
+        }      
+      }
 
       // Add the subgoal to the proof state
       state.push(new_goal);
