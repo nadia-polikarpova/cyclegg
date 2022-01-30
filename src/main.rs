@@ -3,30 +3,6 @@ use egg::{*, rewrite as rw};
 pub mod goal;
 use goal::{*, ast::*};
 
-// Prove a goal.
-// Return true iff proof succeeded.
-fn prove(mut goal: Goal) -> bool {
-  let mut state = vec![goal];
-  while !state.is_empty() {
-    println!("Proof state: {}", pretty_state(&state));
-    // Pop the first subgoal
-    goal = state.pop().unwrap();
-    // Saturate the goal
-    goal = goal.saturate();
-    goal.egraph.dot().to_png(format!("target/{}.png", goal.name)).unwrap();
-    if !goal.done() {
-      // We need to case-split on a variable
-      if goal.can_split() {
-        goal.case_split(&mut state);        
-      } else {
-        // No more variables to case-split on: this goal is unsolvable
-        return false;
-      }    
-    }  
-  }
-  true
-}
-
 fn main() {
   let context = mk_context(&[
     ("x", "Nat"),

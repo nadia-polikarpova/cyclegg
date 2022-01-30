@@ -1,19 +1,20 @@
 use std::{collections::VecDeque};
 use egg::{*};
+use log::{debug};
 
 #[path = "./ast.rs"] pub mod ast;
+#[path = "./config.rs"] pub mod config;
 use ast::{*};
+use config::{*};
 
-// We will use SymbolLang e-graphs with no analysis for now
+// We will use SymbolLang with no analysis for now
 pub type Eg = EGraph<SymbolLang, ()>;
 pub type Rw = Rewrite<SymbolLang, ()>;
 
+/// The sole wildcard used in all lemma rewrites
 const WILDCARD: &str = "?x";
 
-// How many times can a variable be case-split?
-const MAX_SPLIT_DEPTH: usize = 2;
-
-// Cost function to find a term that contains a given variable
+/// Cost function to find a term that contains a given variable
 struct HasVar(Symbol);
 impl CostFunction<SymbolLang> for HasVar {
     type Cost = i32;
@@ -26,42 +27,43 @@ impl CostFunction<SymbolLang> for HasVar {
     }
 }
 
-// Condition that checks whether the substitution is into a smaller variable
+/// Condition that checks whether the substitution is into a smaller variable
 struct SmallerVar(Symbol);
 impl Condition<SymbolLang, ()> for SmallerVar {
   fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
     let target_id = subst.get(WILDCARD.parse().unwrap()).unwrap().clone();
     let extractor = Extractor::new(egraph, AstSize);
     let (_, expr) = extractor.find_best(target_id); // TODO: this is incomplete, we actually need "are any of the expressions in this class smaller?"
-    let res = is_descendant(&expr.to_string(), &self.0.to_string());
-    println!("comparing {} < {}: {}", expr, self.0, res);
-    res
+    if is_descendant(&expr.to_string(), &self.0.to_string()) {
+      debug!("applying {} lemma to {}", self.0, expr);
+      true
+    } else { 
+      false 
+    }
   }
 }
 
-// Proof goal
+/// Proof goal
 pub struct Goal<'a> {
+  /// Goal name
   pub name: String,
-  // Equivalences we already proved
+  /// Equivalences we already proved
   pub egraph: Eg,
-  // Rewrites that are valid for the current goal
+  /// Rewrites that are valid for the current goal
   rewrites: Vec<Rw>,
-  // Context
+  /// Context
   ctx: Context,
-  // Variables we haven't case-split on yet
+  /// Variables we haven't case-split on yet
   scrutinees: VecDeque<Symbol>,
-  // Our goal is to prove lhs == rhs
+  /// Our goal is to prove lhs == rhs
   lhs: &'a Expr,
   rhs: &'a Expr,
-  // Environment
+  /// Environment
   env: &'a Env,
 }
 
-// A proof state is a list of subgoals,
-// all of which have to be discharged
-pub type ProofState<'a> = Vec<Goal<'a>>;
-
 impl<'a> Goal<'a> {
+  /// Create top-level goal
   pub fn top(      
     lhs: &'a Expr,
     rhs: &'a Expr,
@@ -85,29 +87,30 @@ impl<'a> Goal<'a> {
       env,
     }}
 
-  // Have we proven that lhs == rhs?
+  /// Have we proven that lhs == rhs?
   pub fn done(&self) -> bool {
     !self.egraph.equivs(self.lhs, self.rhs).is_empty()
   }
 
+  /// Are there still more variables to case-split on?
   pub fn can_split(&self) -> bool {
     !self.scrutinees.is_empty()
   }
 
-  // Saturate the goal by applying all available rewrites
+  /// Saturate the goal by applying all available rewrites
   pub fn saturate(mut self) -> Self {
     let runner = Runner::default().with_egraph(self.egraph).run(self.rewrites.iter());
     self.egraph = runner.egraph;
     self
   }
 
-  // Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
-  // here lhs and rhs are patterns, created by replacing the scrutinee var with a wildcard;
-  // soundness requires that the pattern only applies to variables smaller than var.
+  /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
+  /// here lhs and rhs are patterns, created by replacing the scrutinee var with a wildcard;
+  /// soundness requires that the pattern only apply to variables smaller than var.
   fn mk_lemma_rewrite(&self, var: Symbol) -> Option<Rw> {
     let extractor = Extractor::new(&self.egraph, HasVar(var));
     
-    // Search for two expressions that are equivalent to the goals' lhs and rhs and that contain var
+    // Search for two expressions that are equivalent to the goals' lhs and rhs and contain var
     let lhs_id = self.egraph.lookup_expr(self.lhs).unwrap();
     let (_, lhs_expr) = extractor.find_best(lhs_id);
     let rhs_id = self.egraph.lookup_expr(self.rhs).unwrap();
@@ -122,20 +125,18 @@ impl<'a> Goal<'a> {
     }
 
     let searcher: Pattern<SymbolLang> = lhs_pattern.parse().unwrap();
-    let applier: Pattern<SymbolLang> = rhs_expr.to_string().replace(var.as_str(), WILDCARD).parse().unwrap();
+    let applier: Pattern<SymbolLang> = rhs_pattern.parse().unwrap();
     let condition = SmallerVar(var);
-
-    println!("creating lemma: {} => {}", searcher, applier);
-    let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier});
-    
+    debug!("creating lemma: {} => {}", searcher, applier);
+    let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier});    
     lemma.ok()
   }
 
-  // Consume this goal and add its case splits to the proof state
-  pub fn case_split(mut self, state: &mut ProofState<'a>) {
+  /// Consume this goal and add its case splits to the proof state
+  fn case_split(mut self, state: &mut ProofState<'a>) {
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
-    println!("case-split on {}", var);
+    debug!("case-split on {}", var);
     let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
 
     let option_lemma = self.mk_lemma_rewrite(var);
@@ -171,8 +172,8 @@ impl<'a> Goal<'a> {
         fresh_vars.push(fresh_var);
         // Add new variable to context
         new_goal.ctx.insert(fresh_var, con_args[i].clone());
-        // Only add new variable to scrutinees if its depth doesn't exceed MAX_DEPTH        
-        if depth < MAX_SPLIT_DEPTH {
+        // Only add new variable to scrutinees if its depth doesn't exceed max_split_depth
+        if depth < CONFIG.max_split_depth {
           new_goal.scrutinees.push_back(fresh_var);
         }                
       }
@@ -199,10 +200,47 @@ impl<'a> Goal<'a> {
       // Add the subgoal to the proof state
       state.push(new_goal);
     }
+  }
 
+  /// Save e-graph to file
+  fn save_egraph(&self) {
+    let filename = format!("target/{}.png", self.name);
+    let verbosity = format!("-q{}", CONFIG.log_level as usize);
+    let dot = self.egraph.dot();    
+    dot.run_dot(&["-Tpng", verbosity.as_str(), "-o", filename.as_str()]).unwrap();
   }
 }
 
+/// A proof state is a list of subgoals,
+/// all of which have to be discharged
+pub type ProofState<'a> = Vec<Goal<'a>>;
+
+/// Pretty-printed proof state
 pub fn pretty_state(state: &ProofState) -> String {
   format!("[{}]", state.iter().map(|g| g.name.clone()).collect::<Vec<String>>().join(", "))
+}
+
+/// Top-level interface to the theorem prover.
+pub fn prove(mut goal: Goal) -> bool {
+  let mut state = vec![goal];
+  while !state.is_empty() {
+    debug!("====PROOF STATE====\n:{}", pretty_state(&state));
+    // Pop the first subgoal
+    goal = state.pop().unwrap();
+    // Saturate the goal
+    goal = goal.saturate();
+    if CONFIG.save_graphs {
+      goal.save_egraph();
+    }
+    if !goal.done() {
+      // We need to case-split on a variable
+      if goal.can_split() {
+        goal.case_split(&mut state);        
+      } else {
+        // No more variables to case-split on: this goal is unsolvable
+        return false;
+      }    
+    }  
+  }
+  true
 }
