@@ -1,20 +1,12 @@
-use std::{collections::{HashMap, VecDeque}};
+use std::{collections::VecDeque};
 use egg::{*};
 
-#[path = "./types.rs"] mod types;
-use types::{*};
-
-pub type Expr = RecExpr<SymbolLang>;
+#[path = "./ast.rs"] pub mod ast;
+use ast::{*};
 
 // We will use SymbolLang e-graphs with no analysis for now
 pub type Eg = EGraph<SymbolLang, ()>;
 pub type Rw = Rewrite<SymbolLang, ()>;
-
-// Environment: for now just a map from datatype names to constructor names
-pub type Env = HashMap<Symbol, Vec<Symbol>>;
-
-// Type context
-pub type Context = HashMap<Symbol, Type>;
 
 // How many times can a variable be case-split?
 const MAX_SPLIT_DEPTH: usize = 2;

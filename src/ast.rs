@@ -1,5 +1,6 @@
 use symbolic_expressions::{Sexp, SexpError};
-use std::{str::FromStr, fmt::Display};
+use std::{str::FromStr, fmt::Display, collections::HashMap};
+use egg::{*};
 
 #[derive(Debug, Clone)]
 pub struct Type { 
@@ -42,4 +43,21 @@ impl Display for Type {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     write!(f, "{}", self.repr)
   }
+}
+
+// Expressions
+pub type Expr = RecExpr<SymbolLang>;
+
+// Environment: for now just a map from datatype names to constructor names
+pub type Env = HashMap<Symbol, Vec<Symbol>>;
+
+// Type context
+pub type Context = HashMap<Symbol, Type>;
+
+pub fn mk_context(descr: &[(&str, &str)]) -> Context {
+  let mut ctx = Context::new();
+  for (name, ty) in descr {
+    ctx.insert(Symbol::from(name), ty.parse().unwrap());
+  }
+  ctx
 }

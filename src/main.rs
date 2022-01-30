@@ -1,8 +1,10 @@
 use egg::{*, rewrite as rw};
 
-mod goal;
-use goal::{*};
+pub mod goal;
+use goal::{*, ast::*};
 
+// Prove a goal.
+// Return true iff proof succeeded.
 fn prove(mut goal: Goal) -> bool {
   let mut state = vec![goal];
   while !state.is_empty() {
@@ -25,16 +27,19 @@ fn prove(mut goal: Goal) -> bool {
 }
 
 fn main() {
-  let context = Context::from([
-    (Symbol::from("x"), "Nat".parse().unwrap()),
-    (Symbol::from("zero"), "Nat".parse().unwrap()),
-    (Symbol::from("succ"), "(-> (Nat) Nat)".parse().unwrap()),
-    (Symbol::from("add"), "(-> (Nat Nat) Nat)".parse().unwrap()),
-    (Symbol::from("triv"), "(-> (Nat) Bool)".parse().unwrap()),
+  let context = mk_context(&[
+    ("x", "Nat"),
+    ("zero", "Nat"),
+    ("succ", "(-> (Nat) Nat)"),
+    ("true", "Bool"),
+    ("false", "Bool"),
+    ("add", "(-> (Nat Nat) Nat)"),
+    ("triv", "(-> (Nat) Bool)"),
   ]);
 
-  let env = Env::from([
-    (Symbol::from("Nat"), vec![Symbol::from("zero"), Symbol::from("succ")]),
+  let env = mk_env(&[
+    ("Nat", "zero succ"),
+    ("Bool", "true false"),
   ]);
 
   let rules: &[Rw] = &[
