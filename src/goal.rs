@@ -14,16 +14,19 @@ pub type Rw = Rewrite<SymbolLang, ()>;
 /// The sole wildcard used in all lemma rewrites
 const WILDCARD: &str = "?x";
 
-/// Cost function to find a term that contains a given variable
+/// A special scrutinee name used to signal that case split bound has been exceeded
+const BOUND_EXCEEDED: &str = "__";
+
+/// Cost function to find the smallest term that contains a given variable
 struct HasVar(Symbol);
 impl CostFunction<SymbolLang> for HasVar {
-    type Cost = i32;
+    type Cost = (i32, usize);
     fn cost<C>(&mut self, enode: &SymbolLang, mut costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost
-    {
-        let op_cost = if enode.op == self.0 { -1 } else { 0 };
-        enode.fold(op_cost, |m, id| std::cmp::min(m, costs(id)))
+    {        
+        let op_cost = if enode.op == self.0 { 0 } else { 1 };                
+        enode.fold((op_cost, 1), |m, id| (std::cmp::min(m.0, costs(id).0), m.1 + costs(id).1))       
     }
 }
 
@@ -76,12 +79,21 @@ impl<'a> Goal<'a> {
     egraph.add_expr(&lhs);
     egraph.add_expr(&rhs);
     egraph.rebuild();
+
+    let scrs: VecDeque<Symbol> = if 0 < CONFIG.max_split_depth { 
+      VecDeque::from_iter(scrutinees.iter().cloned())
+    } else {
+      let mut d = VecDeque::new();
+      d.push_back(Symbol::from(BOUND_EXCEEDED)); 
+      d
+    };
+
     Self {
       name: "top".to_string(),
       egraph,
       rewrites: rewrites.to_vec(),
       ctx: ctx.clone(),
-      scrutinees: scrutinees.to_vec().into_iter().collect(),
+      scrutinees: scrs,
       lhs,
       rhs,
       env,
@@ -90,11 +102,6 @@ impl<'a> Goal<'a> {
   /// Have we proven that lhs == rhs?
   pub fn done(&self) -> bool {
     !self.egraph.equivs(self.lhs, self.rhs).is_empty()
-  }
-
-  /// Are there still more variables to case-split on?
-  pub fn can_split(&self) -> bool {
-    !self.scrutinees.is_empty()
   }
 
   /// Saturate the goal by applying all available rewrites
@@ -127,7 +134,7 @@ impl<'a> Goal<'a> {
     let searcher: Pattern<SymbolLang> = lhs_pattern.parse().unwrap();
     let applier: Pattern<SymbolLang> = rhs_pattern.parse().unwrap();
     let condition = SmallerVar(var);
-    warn!("creating lemma: {} => {}", searcher, applier);
+    warn!("creating {} lemma: {} => {}", var, searcher, applier);
     let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier});    
     lemma.ok()
   }
@@ -138,8 +145,8 @@ impl<'a> Goal<'a> {
     let var = self.scrutinees.pop_front().unwrap();
     warn!("case-split on {}", var);
     let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
-
-    let option_lemma = self.mk_lemma_rewrite(var);
+    
+    let option_lemma = self.mk_lemma_rewrite(var);    
 
     // Get the type of the variable
     let ty = self.ctx.get(&var).unwrap();
@@ -172,10 +179,12 @@ impl<'a> Goal<'a> {
         fresh_vars.push(fresh_var);
         // Add new variable to context
         new_goal.ctx.insert(fresh_var, con_args[i].clone());
-        // Only add new variable to scrutinees if its depth doesn't exceed max_split_depth
+        // Only add new variable to scrutinees if its depth doesn't exceed the bound
         if depth < CONFIG.max_split_depth {
           new_goal.scrutinees.push_back(fresh_var);
-        }                
+        } else {
+          new_goal.scrutinees.push_back(Symbol::from(BOUND_EXCEEDED));
+        }               
       }
 
       // Create an application of the constructor to the fresh vars
@@ -220,12 +229,29 @@ pub fn pretty_state(state: &ProofState) -> String {
   format!("[{}]", state.iter().map(|g| g.name.clone()).collect::<Vec<String>>().join(", "))
 }
 
+/// Outcome of a proof attempt
+pub enum Outcome {
+  Valid,
+  Invalid,
+  Unknown,
+}
+
+impl std::fmt::Display for Outcome {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match *self {
+      Outcome::Valid => write!(f, "valid"),
+      Outcome::Invalid => write!(f, "invalid"),
+      Outcome::Unknown => write!(f, "unknown"),
+    }
+  }
+}
+
 /// Top-level interface to the theorem prover.
-pub fn prove(mut goal: Goal) -> bool {
+pub fn prove(mut goal: Goal) -> Outcome {
   let mut state = vec![goal];
   while !state.is_empty() {
     // TODO: This should be info! but I don't know how to suppress all the info output from egg
-    warn!("PROOF STATE:{}", pretty_state(&state));
+    warn!("PROOF STATE: {}", pretty_state(&state));
     // Pop the first subgoal
     goal = state.pop().unwrap();
     // Saturate the goal
@@ -233,15 +259,22 @@ pub fn prove(mut goal: Goal) -> bool {
     if CONFIG.save_graphs {
       goal.save_egraph();
     }
-    if !goal.done() {
-      // We need to case-split on a variable
-      if goal.can_split() {
-        goal.case_split(&mut state);        
-      } else {
-        // No more variables to case-split on: this goal is unsolvable
-        return false;
-      }    
-    }  
+    if goal.done() { 
+       // This goal has been discharged, proceed to the next goal
+      continue;
+    } 
+    if goal.scrutinees.is_empty() {
+      // This goal has no more variables to case-split on, 
+      // so this goal, and hence the whole conjecture, is invalid
+      return Outcome::Invalid;
+    }
+    if goal.scrutinees.front().unwrap() == &Symbol::from(BOUND_EXCEEDED) {
+      // This goal could be further split, but we have reached the maximum depth,
+      // we cannot prove or disprove the conjecture
+      return Outcome::Unknown;
+    }
+    goal.case_split(&mut state);
   }
-  true
+  // All goals have been discharged, so the conjecture is valid:
+  Outcome::Valid
 }

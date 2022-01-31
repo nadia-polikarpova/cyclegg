@@ -15,6 +15,7 @@ fn main() {
     // ("true", "Bool"),
     // ("false", "Bool"),
     ("add", "(-> (Nat Nat) Nat)"),
+    ("sub", "(-> (Nat Nat) Nat)"),
     // ("triv", "(-> (Nat) Bool)"),
   ]);
 
@@ -26,6 +27,9 @@ fn main() {
   let rules: &[Rw] = &[
     rw!("add-zero"; "(add zero ?y)" => "?y"),
     rw!("add-succ"; "(add (succ ?x) ?y)" => "(succ (add ?x ?y))"),
+    rw!("sub-zero-1"; "(sub ?x zero)" => "?x"),
+    rw!("sub-zero-2"; "(sub zero ?y)" => "zero"),
+    rw!("sub-succ"; "(sub (succ ?x) (succ ?y))" => "(sub ?x ?y)"),
     // rw!("triv-zero"; "(triv zero)" => "true"),
     // rw!("triv-succ"; "(triv (succ ?x))" => "true"),
     // rw!("triv-succ-zero"; "(triv (succ zero))" => "true"),
@@ -41,8 +45,9 @@ fn main() {
   // let rhs: Expr = "true".parse().unwrap();
   let lhs: Expr = "(add x y)".parse().unwrap();
   let rhs: Expr = "(add y x)".parse().unwrap();
+  // let lhs: Expr = "(sub x y)".parse().unwrap();
+  // let rhs: Expr = "(sub y x)".parse().unwrap();
 
-  println!("Conjecture: {} = {}", lhs, rhs);
 
   let goal = Goal::top(
     &lhs,
@@ -53,10 +58,7 @@ fn main() {
     &[Symbol::from("x"), Symbol::from("y")],
   );
 
+  println!("conjecture: {} = {}", lhs, rhs);
   let result = prove(goal);
-  if result {
-    println!("Proved!");
-  } else {
-    println!("Who knows?");
-  }
+  println!("{}", result);
 }
