@@ -1,4 +1,4 @@
-use std::{collections::VecDeque};
+use std::{collections::{VecDeque, HashMap}};
 use egg::{*};
 use log::{warn};
 
@@ -115,13 +115,29 @@ impl<'a> Goal<'a> {
   /// here lhs and rhs are patterns, created by replacing the scrutinee var with a wildcard;
   /// soundness requires that the pattern only apply to variables smaller than var.
   fn mk_lemma_rewrite(&self, var: Symbol) -> Option<Rw> {
-    let extractor = Extractor::new(&self.egraph, HasVar(var));
+    // let extractor = Extractor::new(&self.egraph, HasVar(var));
     
     // Search for two expressions that are equivalent to the goals' lhs and rhs and contain var
     let lhs_id = self.egraph.lookup_expr(self.lhs).unwrap();
-    let (_, lhs_expr) = extractor.find_best(lhs_id);
+    // let (_, lhs_expr) = extractor.find_best(lhs_id);
     let rhs_id = self.egraph.lookup_expr(self.rhs).unwrap();
-    let (_, rhs_expr) = extractor.find_best(rhs_id);
+    // let (_, rhs_expr) = extractor.find_best(rhs_id);
+    let mut exprs = HashMap::new();
+    Goal::collect_all_expressions(&self.egraph, lhs_id, &mut exprs);
+    Goal::collect_all_expressions(&self.egraph, rhs_id, &mut exprs);
+
+    println!("All LHS expressions:");
+    for le in exprs.get(&lhs_id).unwrap() {
+      println!("{}", le);
+    }
+    println!("All RHS expressions:");
+    for re in exprs.get(&rhs_id).unwrap() {
+      println!("{}", re);
+    }
+
+
+    let lhs_expr = exprs.get(&lhs_id).unwrap()[0].clone();
+    let rhs_expr = exprs.get(&rhs_id).unwrap()[0].clone();
     
     let name = format!("lemma-{}", var);
     let lhs_pattern = lhs_expr.to_string().replace(var.as_str(), WILDCARD); // TODO: this is sketchy
@@ -208,6 +224,52 @@ impl<'a> Goal<'a> {
 
       // Add the subgoal to the proof state
       state.push(new_goal);
+    }
+  }
+
+  // Compute the denotation of eclass ignoring cycles and store it in memo
+  fn collect_all_expressions(egraph: &Eg, eclass: Id, memo: &mut HashMap<Id, Vec<Expr>>) {
+    if let Some(_) = memo.get(&eclass) {
+      // Already visited
+      return;
+    } else {
+      // Initialize the memo entry for this eclass with an empty denotation,
+      // collect denotations in a separate vector and update the map only at the end;
+      // this guarantees that we are not following cycles
+      memo.insert(eclass, vec![]);
+      let mut denotations = vec![];
+      // Join denotations of every node in the eclass
+      for node in egraph[eclass].iter() {
+        if node.is_leaf() {
+          // If this node is a leaf, its denotation is itself
+          let expr = Expr::from(vec![node.clone()]);
+          denotations.push(expr);
+        } else {
+          // Otherwise, recursively collect the denotations of its children
+          // and create a new expression from each tuple of their cross product.
+          // Each products[i] stores the product of denotation sizes of all nodes from i+1 onwards 
+          let mut products: HashMap<Id, usize> = HashMap::new();
+          for (i, c) in node.children().iter().enumerate() {
+            Goal::collect_all_expressions(egraph, *c, memo);
+            products.insert(*c, 1);
+            for j in 0..i {
+              products.entry(node.children[j]).and_modify(|p| *p *= memo[c].len());
+            }
+          }
+          // Now create the new expressions
+          let c0 = &node.children[0];
+          // First compute the size of the cross product; we almost have it in products[c0]; just the size of c0's denotation is missing
+          let cross_product_size = products[c0] * memo[c0].len();
+          for k in 0..cross_product_size {
+            // For the k-th element of the cross product, which element from the denotation of id should we take?
+            // The formula is: k / (the product of all following denotation sizes) % this denotation size
+            let lookup_id = |id: Id| k / products[&id] % memo[&id].len();
+            let expr = node.join_recexprs(|id| memo.get(&id).unwrap()[lookup_id(id)].clone());
+            denotations.push(expr);
+          }
+        }
+      }
+      memo.insert(eclass, denotations);
     }
   }
 
