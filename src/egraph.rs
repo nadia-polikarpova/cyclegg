@@ -9,13 +9,13 @@ type Denotation<L> = HashMap<Id, Vec<RecExpr<L>>>;
 pub fn get_all_expressions<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, roots: Vec<Id>) -> Denotation<L> {
   let mut memo = HashMap::new();
   for root in roots {
-    collect_all_expressions(egraph, root, &mut memo);
+    collect_expressions(egraph, root, &mut memo);
   }
   memo
 }
 
 // Compute the denotation of eclass ignoring cycles and store it in memo
-fn collect_all_expressions<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, eclass: Id, memo: &mut Denotation<L>) {
+fn collect_expressions<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, eclass: Id, memo: &mut Denotation<L>) {
   if let Some(_) = memo.get(&eclass) {
     // Already visited
     return;
@@ -37,7 +37,7 @@ fn collect_all_expressions<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, e
         // Each products[i] stores the product of denotation sizes of all nodes from i+1 onwards 
         let mut products: HashMap<Id, usize> = HashMap::new();
         for (i, c) in node.children().iter().enumerate() {
-          collect_all_expressions(egraph, *c, memo);
+          collect_expressions(egraph, *c, memo);
           products.insert(*c, 1);
           for j in 0..i {
             products.entry(node.children()[j]).and_modify(|p| *p *= memo[c].len());
