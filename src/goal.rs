@@ -122,11 +122,8 @@ impl<'a> Goal<'a> {
       for rhs_expr in exprs.get(&rhs_id).unwrap() {
         // TODO: perhaps just take the first right-hand side?
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
-        let lhs_pattern = lhs_expr.to_string().replace(var.as_str(), WILDCARD); // TODO: this is sketchy
-        let rhs_pattern = rhs_expr.to_string().replace(var.as_str(), WILDCARD);
-    
-        let searcher: Pattern<SymbolLang> = lhs_pattern.parse().unwrap();
-        let applier: Pattern<SymbolLang> = rhs_pattern.parse().unwrap();
+        let searcher: Pattern<SymbolLang> = Goal::to_pattern(lhs_expr, var);
+        let applier: Pattern<SymbolLang> = Goal::to_pattern(rhs_expr, var);
         let condition = SmallerVar(var);
         warn!("creating {} lemma: {} => {}", var, searcher, applier);
         let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier}).unwrap();
@@ -135,6 +132,20 @@ impl<'a> Goal<'a> {
     }
     rewrites        
   }
+
+  // Convert e into a pattern by replacing the variable source with a wildcard
+  fn to_pattern(e: &Expr, source: Symbol) -> Pattern<SymbolLang> {
+    let mut pattern_ast = PatternAst::default();
+    let var: Var = WILDCARD.parse().unwrap(); 
+    for n in e.as_ref() {
+      if n.op == source {
+        pattern_ast.add(ENodeOrVar::Var(var));
+      } else {
+        pattern_ast.add(ENodeOrVar::ENode(n.clone()));
+      }
+    }
+    Pattern::from(pattern_ast)
+  }  
 
   /// Consume this goal and add its case splits to the proof state
   fn case_split(mut self, state: &mut ProofState<'a>) {
