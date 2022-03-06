@@ -19,19 +19,6 @@ const WILDCARD: &str = "?x";
 /// A special scrutinee name used to signal that case split bound has been exceeded
 const BOUND_EXCEEDED: &str = "__";
 
-/// Cost function to find the smallest term that contains a given variable
-struct HasVar(Symbol);
-impl CostFunction<SymbolLang> for HasVar {
-    type Cost = (i32, usize);
-    fn cost<C>(&mut self, enode: &SymbolLang, mut costs: C) -> Self::Cost
-    where
-        C: FnMut(Id) -> Self::Cost
-    {        
-        let op_cost = if enode.op == self.0 { 0 } else { 1 };                
-        enode.fold((op_cost, 1), |m, id| (std::cmp::min(m.0, costs(id).0), m.1 + costs(id).1))       
-    }
-}
-
 /// Condition that checks whether the substitution is into a smaller variable
 struct SmallerVar(Symbol);
 impl Condition<SymbolLang, ()> for SmallerVar {
@@ -116,43 +103,37 @@ impl<'a> Goal<'a> {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing the scrutinee var with a wildcard;
   /// soundness requires that the pattern only apply to variables smaller than var.
-  fn mk_lemma_rewrite(&self, var: Symbol) -> Option<Rw> {
-    // let extractor = Extractor::new(&self.egraph, HasVar(var));
-    
-    // Search for two expressions that are equivalent to the goals' lhs and rhs and contain var
+  fn mk_lemma_rewrites(&self, var: Symbol) -> Vec<Rw> {
     let lhs_id = self.egraph.lookup_expr(self.lhs).unwrap();
-    // let (_, lhs_expr) = extractor.find_best(lhs_id);
     let rhs_id = self.egraph.lookup_expr(self.rhs).unwrap();
-    // let (_, rhs_expr) = extractor.find_best(rhs_id);
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
 
-    println!("All LHS expressions:");
-    for le in exprs.get(&lhs_id).unwrap() {
-      println!("{}", le);
-    }
-    println!("All RHS expressions:");
-    for re in exprs.get(&rhs_id).unwrap() {
-      println!("{}", re);
-    }
+    // println!("All LHS expressions:");
+    // for le in exprs.get(&lhs_id).unwrap() {
+    //   println!("{}", le);
+    // }
+    // println!("All RHS expressions:");
+    // for re in exprs.get(&rhs_id).unwrap() {
+    //   println!("{}", re);
+    // }
 
-
-    let lhs_expr = exprs.get(&lhs_id).unwrap()[0].clone();
-    let rhs_expr = exprs.get(&rhs_id).unwrap()[0].clone();
+    let mut rewrites = vec![];
+    for lhs_expr in exprs.get(&lhs_id).unwrap() {
+      for rhs_expr in exprs.get(&rhs_id).unwrap() {
+        // TODO: perhaps just take the first right-hand side?
+        let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
+        let lhs_pattern = lhs_expr.to_string().replace(var.as_str(), WILDCARD); // TODO: this is sketchy
+        let rhs_pattern = rhs_expr.to_string().replace(var.as_str(), WILDCARD);
     
-    let name = format!("lemma-{}", var);
-    let lhs_pattern = lhs_expr.to_string().replace(var.as_str(), WILDCARD); // TODO: this is sketchy
-    let rhs_pattern = rhs_expr.to_string().replace(var.as_str(), WILDCARD);
-    // If neither pattern contains the wildcard, we cannot create the rewrite
-    if !lhs_pattern.contains(WILDCARD) && !rhs_pattern.contains(WILDCARD) {
-      return None;
+        let searcher: Pattern<SymbolLang> = lhs_pattern.parse().unwrap();
+        let applier: Pattern<SymbolLang> = rhs_pattern.parse().unwrap();
+        let condition = SmallerVar(var);
+        warn!("creating {} lemma: {} => {}", var, searcher, applier);
+        let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier}).unwrap();
+        rewrites.push(lemma);
+      }
     }
-
-    let searcher: Pattern<SymbolLang> = lhs_pattern.parse().unwrap();
-    let applier: Pattern<SymbolLang> = rhs_pattern.parse().unwrap();
-    let condition = SmallerVar(var);
-    warn!("creating {} lemma: {} => {}", var, searcher, applier);
-    let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier});    
-    lemma.ok()
+    rewrites        
   }
 
   /// Consume this goal and add its case splits to the proof state
@@ -162,7 +143,7 @@ impl<'a> Goal<'a> {
     warn!("case-split on {}", var);
     let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
     
-    let option_lemma = self.mk_lemma_rewrite(var);    
+    let lemmas = self.mk_lemma_rewrites(var);
 
     // Get the type of the variable
     let ty = self.ctx.get(&var).unwrap();
@@ -215,18 +196,18 @@ impl<'a> Goal<'a> {
       new_goal.egraph.union(var_id, con_app_id);
       new_goal.egraph.rebuild();
 
+      // Remove old variable from the egraph
+      remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
+
       // If the constructor has parameters and we have a lemma, add it to the new goal's rewrites
       if !fresh_vars.is_empty() {
-        if let Some(lemma) = option_lemma.clone() {
-          new_goal.rewrites.push(lemma);
-        }      
+        new_goal.rewrites.extend(lemmas.clone());
       }
 
       // Add the subgoal to the proof state
       state.push(new_goal);
     }
   }
-
 
   /// Save e-graph to file
   fn save_egraph(&self) {

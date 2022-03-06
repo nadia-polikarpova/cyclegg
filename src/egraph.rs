@@ -59,3 +59,10 @@ fn collect_expressions<L: Language, A: Analysis<L>>(egraph: &EGraph<L, A>, eclas
     memo.insert(eclass, denotations);
   }
 }
+
+// Remove node from egraph
+pub fn remove_node<L: Language, A: Analysis<L>>(egraph: &mut EGraph<L, A>, node: &L) {
+  for c in egraph.classes_mut() {
+    c.nodes.retain(|n| n != node);
+  }
+}
