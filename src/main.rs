@@ -12,16 +12,16 @@ fn main() {
     ("y", "Nat"),
     ("zero", "Nat"),
     ("succ", "(-> (Nat) Nat)"),
-    // ("true", "Bool"),
-    // ("false", "Bool"),
+    ("true", "Bool"),
+    ("false", "Bool"),
     ("add", "(-> (Nat Nat) Nat)"),
     ("sub", "(-> (Nat Nat) Nat)"),
-    // ("triv", "(-> (Nat) Bool)"),
+    ("lt", "(-> (Nat Nat) Bool)"),
   ]);
 
   let env = mk_env(&[
     ("Nat", "zero succ"),
-    // ("Bool", "true false"),
+    ("Bool", "true false"),
   ]);
 
   let rules: &[Rw] = &[
@@ -30,24 +30,13 @@ fn main() {
     rw!("sub-zero-1"; "(sub ?x zero)" => "?x"),
     rw!("sub-zero-2"; "(sub zero ?y)" => "zero"),
     rw!("sub-succ"; "(sub (succ ?x) (succ ?y))" => "(sub ?x ?y)"),
-    // rw!("triv-zero"; "(triv zero)" => "true"),
-    // rw!("triv-succ"; "(triv (succ ?x))" => "true"),
-    // rw!("triv-succ-zero"; "(triv (succ zero))" => "true"),
-    // rw!("triv-succ-succ"; "(triv (succ (succ ?x))))" => "true"),
+    rw!("lt-zero"; "(lt ?x zero)" => "false"),
+    rw!("lt-zero-succ"; "(lt zero (succ ?y))" => "true"),
+    rw!("lt-succ-succ"; "(lt (succ ?x) (succ ?y))" => "(lt ?x ?y)"),
   ];
-
   
-  // let lhs: Expr = "(add (succ (succ zero)) (succ (succ zero)))".parse().unwrap();
-  // let rhs: Expr = "(succ (succ (succ (succ zero))))".parse().unwrap();
-  // let lhs: Expr = "(add (succ (succ zero)) x)".parse().unwrap();
-  // let rhs: Expr = "(succ (succ x))".parse().unwrap();
-  // let lhs: Expr = "(triv x)".parse().unwrap();
-  // let rhs: Expr = "true".parse().unwrap();
   let lhs: Expr = "(add x y)".parse().unwrap();
   let rhs: Expr = "(add y x)".parse().unwrap();
-  // let lhs: Expr = "(sub x y)".parse().unwrap();
-  // let rhs: Expr = "(sub y x)".parse().unwrap();
-
 
   let goal = Goal::top(
     &lhs,
@@ -55,7 +44,7 @@ fn main() {
     &env,
     &context,
     rules,
-    &[Symbol::from("x"), Symbol::from("y")],
+    &[Symbol::from("x"), Symbol::from("y")],    
   );
 
   println!("conjecture: {} = {}", lhs, rhs);
