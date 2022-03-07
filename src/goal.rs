@@ -148,12 +148,23 @@ impl Goal {
         // TODO: perhaps just take the first right-hand side?
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
         let is_var = |v| self.scrutinees.contains(v);
-        let searcher: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
-        let applier: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
+        let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
+        let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
         let condition = SmallerVar(self.scrutinees.iter().cloned().collect());
-        warn!("creating lemma: {} => {}", searcher, applier);
-        let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier}).unwrap();
-        rewrites.push(lemma);
+
+        if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
+          // if rhs has no extra wildcards, create a lemma lhs => rhs
+          warn!("creating lemma: {} => {}", lhs, rhs);
+          let lemma = Rewrite::new(name, lhs, ConditionalApplier {condition: condition, applier: rhs}).unwrap();
+          rewrites.push(lemma);
+        } else if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
+          // otherwise if lhs has no extra wildcards, create a lemma rhs => lhs
+          warn!("creating lemma: {} => {}", rhs, lhs);
+          let lemma = Rewrite::new(name, rhs, ConditionalApplier {condition: condition, applier: lhs}).unwrap();
+          rewrites.push(lemma);
+        } else {
+          warn!("cannot create a lemma from {} and {}", lhs, rhs);
+        }
       }
     }
     rewrites        
