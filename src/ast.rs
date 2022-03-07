@@ -47,6 +47,7 @@ impl Display for Type {
 
 // Expressions
 pub type Expr = RecExpr<SymbolLang>;
+pub type Pat = Pattern<SymbolLang>;
 
 pub fn var_depth(var_name: &str) -> usize {
   var_name.matches("-").count()
@@ -54,6 +55,26 @@ pub fn var_depth(var_name: &str) -> usize {
 
 pub fn is_descendant(var_name: &String, ancestor_name: &String) -> bool {
   var_name.starts_with(ancestor_name) && var_name.len() > ancestor_name.len()
+}
+
+// Convert a symbol into a wildcard by prepending a '?' to it
+pub fn to_wildcard(s: &Symbol) -> Var {
+  format!("?{}", s).parse().unwrap()
+}
+
+// Convert e into a pattern by replacing all symbols where is_var holds with wildcards
+pub fn to_pattern<'a, P>(e: &'a Expr, is_var: P) -> Pat
+where P: Fn(&'a Symbol) -> bool
+{
+  let mut pattern_ast = PatternAst::default();
+  for n in e.as_ref() {
+    if is_var(&n.op) {     
+      pattern_ast.add(ENodeOrVar::Var(to_wildcard(&n.op)));
+    } else {
+      pattern_ast.add(ENodeOrVar::ENode(n.clone()));
+    }
+  }
+  Pattern::from(pattern_ast)
 }
 
 // Environment: for now just a map from datatype names to constructor names

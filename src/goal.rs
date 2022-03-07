@@ -14,25 +14,48 @@ use config::{*};
 pub type Eg = EGraph<SymbolLang, ()>;
 pub type Rw = Rewrite<SymbolLang, ()>;
 
-/// The sole wildcard used in all lemma rewrites
-const WILDCARD: &str = "?x";
-
 /// A special scrutinee name used to signal that case split bound has been exceeded
 const BOUND_EXCEEDED: &str = "__";
 
-/// Condition that checks whether the substitution is into a smaller variable
-struct SmallerVar(Symbol);
-impl Condition<SymbolLang, ()> for SmallerVar {
-  fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
-    let target_id = subst.get(WILDCARD.parse().unwrap()).unwrap().clone();
-    let extractor = Extractor::new(egraph, AstSize);
-    let (_, expr) = extractor.find_best(target_id); // TODO: this is incomplete, we actually need "are any of the expressions in this class smaller?"
-    if is_descendant(&expr.to_string(), &self.0.to_string()) {
-      warn!("applying {} lemma to {}", self.0, expr);
-      true
-    } else { 
-      false 
+/// Condition that checks whether the substitution is into a smaller tuple of variable
+struct SmallerVar(Vec<Symbol>);
+impl SmallerVar {
+  /// Substitution as a string, for debugging purposes
+  fn pretty_subst(subst: &Vec<(&Symbol, Expr)>) -> String {
+    let strings: Vec<String> = subst.iter().map(|p| format!("{} -> {}", &p.0.to_string(), &p.1.to_string())).collect();
+    strings.join(", ")
+  }
+
+  /// Is the range of subst smaller than its domain, when compared as a tuple?
+  /// For now implements a sound but incomplete measure,
+  /// where all components of the range need to be no larger, and at least one has to be strictly smaller.
+  /// TODO: Implement a fancy automata-theoretic check here.
+  fn smaller_tuple(subst: &Vec<(&Symbol, Expr)>) -> bool {
+    let mut has_strictly_smaller = false;
+    let info = SmallerVar::pretty_subst(subst);    
+    for (var, expr) in subst {
+      let var_name = var.to_string();
+      let expr_name = expr.to_string();
+      if is_descendant(&expr_name, &var_name) {
+        // Target is strictly smaller than source
+        has_strictly_smaller = true;
+      } else if expr_name != var_name {
+        // Target is neither strictly smaller nor equal to source
+        return false;
+      }
     }
+    if has_strictly_smaller { warn!("applying lemma with subst [{}]", info); }
+    has_strictly_smaller
+  }
+}
+
+impl Condition<SymbolLang, ()> for SmallerVar {
+  /// Returns true if the substitution is into a smaller tuple of variables
+  fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
+    let target_ids = self.0.iter().map(|x| subst.get(to_wildcard(x)).unwrap());
+    let extractor = Extractor::new(egraph, AstSize);
+    let targets = target_ids.map(|x| extractor.find_best(*x).1);
+    SmallerVar::smaller_tuple(&self.0.iter().zip(targets).collect())
   }
 }
 
@@ -103,9 +126,9 @@ impl Goal {
   }
 
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
-  /// here lhs and rhs are patterns, created by replacing the scrutinee var with a wildcard;
-  /// soundness requires that the pattern only apply to variables smaller than var.
-  fn mk_lemma_rewrites(&self, var: Symbol) -> Vec<Rw> {
+  /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
+  /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
+  fn mk_lemma_rewrites(&self) -> Vec<Rw> {
     let lhs_id = self.egraph.lookup_expr(&self.lhs).unwrap();
     let rhs_id = self.egraph.lookup_expr(&self.rhs).unwrap();
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
@@ -124,10 +147,11 @@ impl Goal {
       for rhs_expr in exprs.get(&rhs_id).unwrap() {
         // TODO: perhaps just take the first right-hand side?
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
-        let searcher: Pattern<SymbolLang> = Goal::to_pattern(lhs_expr, var);
-        let applier: Pattern<SymbolLang> = Goal::to_pattern(rhs_expr, var);
-        let condition = SmallerVar(var);
-        warn!("creating {} lemma: {} => {}", var, searcher, applier);
+        let is_var = |v| self.scrutinees.contains(v);
+        let searcher: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
+        let applier: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
+        let condition = SmallerVar(self.scrutinees.iter().cloned().collect());
+        warn!("creating lemma: {} => {}", searcher, applier);
         let lemma = Rewrite::new(name, searcher, ConditionalApplier {condition: condition, applier: applier}).unwrap();
         rewrites.push(lemma);
       }
@@ -135,29 +159,14 @@ impl Goal {
     rewrites        
   }
 
-  // Convert e into a pattern by replacing the variable source with a wildcard
-  fn to_pattern(e: &Expr, source: Symbol) -> Pattern<SymbolLang> {
-    let mut pattern_ast = PatternAst::default();
-    let var: Var = WILDCARD.parse().unwrap(); 
-    for n in e.as_ref() {
-      if n.op == source {
-        pattern_ast.add(ENodeOrVar::Var(var));
-      } else {
-        pattern_ast.add(ENodeOrVar::ENode(n.clone()));
-      }
-    }
-    Pattern::from(pattern_ast)
-  }  
-
   /// Consume this goal and add its case splits to the proof state
   fn case_split(mut self, state: &mut ProofState) {
+    let lemmas = self.mk_lemma_rewrites();
+
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
     warn!("case-split on {}", var);
     let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
-    
-    let lemmas = self.mk_lemma_rewrites(var);
-
     // Get the type of the variable
     let ty = self.ctx.get(&var).unwrap();
     // Convert to datatype name
@@ -212,7 +221,7 @@ impl Goal {
       // Remove old variable from the egraph
       remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
 
-      // If the constructor has parameters and we have a lemma, add it to the new goal's rewrites
+      // If the constructor has parameters, add all lemmas to the new goal's rewrites
       if !fresh_vars.is_empty() {
         new_goal.rewrites.extend(lemmas.clone());
       }
@@ -250,9 +259,9 @@ pub enum Outcome {
 impl std::fmt::Display for Outcome {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     match *self {
-      Outcome::Valid => write!(f, "{}", "valid".green()),
-      Outcome::Invalid => write!(f, "{}", "invalid".red()),
-      Outcome::Unknown => write!(f, "{}", "unknown".yellow()),
+      Outcome::Valid => write!(f, "{}", "VALID".green()),
+      Outcome::Invalid => write!(f, "{}", "INVALID".red()),
+      Outcome::Unknown => write!(f, "{}", "UNKNOWN".yellow()),
     }
   }
 }
