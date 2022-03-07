@@ -16,10 +16,31 @@
 (=> (sub Z ?y)          Z          )
 (=> (sub (S ?x) (S ?y)) (sub ?x ?y))
 
+(:: eq (-> (Nat Nat) Bool))
+(=> (eq Z      Z     ) True      )
+(=> (eq Z      (S ?y)) False     )
+(=> (eq (S ?x) Z     ) False     )
+(=> (eq (S ?x) (S ?y)) (eq ?x ?y))
+
+(:: leq (-> (Nat Nat) Bool))
+(=> (leq Z      ?y) True           )
+(=> (leq (S ?x) Z ) False          )
+(=> (leq (S ?x) (S ?y)) (leq ?x ?y))
+
 (:: lt (-> (Nat Nat) Bool))
 (=> (lt ?x     Z     ) False     )
 (=> (lt Z      (S ?y)) True      )
 (=> (lt (S ?x) (S ?y)) (lt ?x ?y))
+
+(:: min (-> (Nat Nat) Nat))
+(=> (min Z      ?y    ) Z              )
+(=> (min ?x     Z     ) Z              )
+(=> (min (S ?x) (S ?y)) (S (min ?x ?y)))
+
+(:: max (-> (Nat Nat) Nat))
+(=> (max Z      ?y    ) ?y              )
+(=> (max ?x     Z     ) ?x              )
+(=> (max (S ?x) (S ?y)) (S (max ?x ?y)))
 
 (=== prop06 (n m) (Nat Nat)
   (sub n (add n m))
@@ -46,4 +67,28 @@
   Z
 )
 
+(=== prop17 (n) (Nat)
+  (leq n Z)
+  (eq n Z)
+)
+
+(=== prop18 (i m) (Nat Nat)
+  (lt i (S (add i m)))
+  True
+)
+
+(=== prop21 (n m) (Nat Nat)
+  (leq n (add n m))
+  True
+)
+
+(=== prop22 (a b c) (Nat Nat Nat)
+  (max (max a b) c)
+  (max a (max b c))
+)
+
+(=== prop23 (a b) (Nat Nat)
+  (max a b)
+  (max b a)
+)
 )
