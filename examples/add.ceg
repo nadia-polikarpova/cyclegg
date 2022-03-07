@@ -7,18 +7,8 @@
 (=> (add Z ?y) ?y)
 (=> (add (S ?x) ?y) (S (add ?x ?y)))
 
-(=== prop_1 (x y) (Nat Nat)
+(=== add_commutative (x y) (Nat Nat)
   (add x y)
   (add y x)
-)
-
-(=== prop_2 (x) (Nat)
-  (add x Z)
-  (x)
-)
-
-(=== prop_3 (x) (Nat)
-  (add x (S y))
-  (S (add x y))
 )
 )

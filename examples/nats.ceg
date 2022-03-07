@@ -1,0 +1,49 @@
+(
+(data Bool (True False))
+(:: True Bool)
+(:: False Bool)
+
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(:: add (-> (Nat Nat) Nat))
+(=> (add Z      ?y) ?y             )
+(=> (add (S ?x) ?y) (S (add ?x ?y)))
+
+(:: sub (-> (Nat Nat) Nat))
+(=> (sub ?x Z)          ?x         )
+(=> (sub Z ?y)          Z          )
+(=> (sub (S ?x) (S ?y)) (sub ?x ?y))
+
+(:: lt (-> (Nat Nat) Bool))
+(=> (lt ?x     Z     ) False     )
+(=> (lt Z      (S ?y)) True      )
+(=> (lt (S ?x) (S ?y)) (lt ?x ?y))
+
+(=== prop06 (n m) (Nat Nat)
+  (sub n (add n m))
+  Z
+)
+
+(=== prop07 (n m) (Nat Nat)
+  (sub (add n m) n)
+  m
+)
+
+(=== prop08 (k m n) (Nat Nat Nat)
+  (sub (add k m) (add k n))
+  (sub m n)
+)
+
+(=== prop09 (i j k) (Nat Nat Nat)
+  (sub (sub i j) k)
+  (sub i (add j k))
+)
+
+(=== prop10 (m) (Nat)
+  (sub m m)
+  Z
+)
+
+)

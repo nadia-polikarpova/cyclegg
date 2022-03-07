@@ -83,6 +83,7 @@ name = "cyclegg"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "colored",
  "egg",
  "lazy_static",
  "log",

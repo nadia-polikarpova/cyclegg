@@ -1,6 +1,7 @@
 use std::{collections::VecDeque};
 use egg::{*};
 use log::{warn};
+use colored::Colorize;
 
 #[path = "./ast.rs"] pub mod ast;
 #[path = "./egraph.rs"] pub mod egraph;
@@ -249,9 +250,9 @@ pub enum Outcome {
 impl std::fmt::Display for Outcome {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     match *self {
-      Outcome::Valid => write!(f, "valid"),
-      Outcome::Invalid => write!(f, "invalid"),
-      Outcome::Unknown => write!(f, "unknown"),
+      Outcome::Valid => write!(f, "{}", "valid".green()),
+      Outcome::Invalid => write!(f, "{}", "invalid".red()),
+      Outcome::Unknown => write!(f, "{}", "unknown".yellow()),
     }
   }
 }
