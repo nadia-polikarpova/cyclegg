@@ -8,7 +8,7 @@ pub struct Type {
 }
 
 impl Type {
-  fn new(repr: Sexp) -> Self {
+  pub fn new(repr: Sexp) -> Self {
     Self { repr }
   }
 

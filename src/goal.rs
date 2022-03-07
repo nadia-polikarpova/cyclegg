@@ -36,7 +36,7 @@ impl Condition<SymbolLang, ()> for SmallerVar {
 }
 
 /// Proof goal
-pub struct Goal<'a> {
+pub struct Goal {
   /// Goal name
   pub name: String,
   /// Equivalences we already proved
@@ -48,18 +48,19 @@ pub struct Goal<'a> {
   /// Variables we haven't case-split on yet
   scrutinees: VecDeque<Symbol>,
   /// Our goal is to prove lhs == rhs
-  lhs: &'a Expr,
-  rhs: &'a Expr,
+  pub lhs: Expr,
+  pub rhs: Expr,
   /// Environment
-  env: &'a Env,
+  env: Env,
 }
 
-impl<'a> Goal<'a> {
+impl Goal {
   /// Create top-level goal
-  pub fn top(      
-    lhs: &'a Expr,
-    rhs: &'a Expr,
-    env: &'a Env,
+  pub fn top(
+    name: &str,      
+    lhs: &Expr,
+    rhs: &Expr,
+    env: &Env,
     ctx: &Context,
     rewrites: &[Rw],    
     scrutinees: &[Symbol],
@@ -78,19 +79,19 @@ impl<'a> Goal<'a> {
     };
 
     Self {
-      name: "top".to_string(),
+      name: name.to_string(),
       egraph,
       rewrites: rewrites.to_vec(),
       ctx: ctx.clone(),
       scrutinees: scrs,
-      lhs,
-      rhs,
-      env,
+      lhs: lhs.clone(),
+      rhs: rhs.clone(),
+      env: env.clone(),
     }}
 
   /// Have we proven that lhs == rhs?
   pub fn done(&self) -> bool {
-    !self.egraph.equivs(self.lhs, self.rhs).is_empty()
+    !self.egraph.equivs(&self.lhs, &self.rhs).is_empty()
   }
 
   /// Saturate the goal by applying all available rewrites
@@ -104,8 +105,8 @@ impl<'a> Goal<'a> {
   /// here lhs and rhs are patterns, created by replacing the scrutinee var with a wildcard;
   /// soundness requires that the pattern only apply to variables smaller than var.
   fn mk_lemma_rewrites(&self, var: Symbol) -> Vec<Rw> {
-    let lhs_id = self.egraph.lookup_expr(self.lhs).unwrap();
-    let rhs_id = self.egraph.lookup_expr(self.rhs).unwrap();
+    let lhs_id = self.egraph.lookup_expr(&self.lhs).unwrap();
+    let rhs_id = self.egraph.lookup_expr(&self.rhs).unwrap();
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
 
     // println!("All LHS expressions:");
@@ -148,7 +149,7 @@ impl<'a> Goal<'a> {
   }  
 
   /// Consume this goal and add its case splits to the proof state
-  fn case_split(mut self, state: &mut ProofState<'a>) {
+  fn case_split(mut self, state: &mut ProofState) {
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
     warn!("case-split on {}", var);
@@ -171,9 +172,9 @@ impl<'a> Goal<'a> {
         rewrites: self.rewrites.clone(),
         ctx: self.ctx.clone(),
         scrutinees: self.scrutinees.clone(),
-        lhs: self.lhs,
-        rhs: self.rhs,
-        env: self.env,
+        lhs: self.lhs.clone(),
+        rhs: self.rhs.clone(),
+        env: self.env.clone(),
       };
 
       // Get the types of constructor arguments
@@ -231,7 +232,7 @@ impl<'a> Goal<'a> {
 
 /// A proof state is a list of subgoals,
 /// all of which have to be discharged
-pub type ProofState<'a> = Vec<Goal<'a>>;
+pub type ProofState = Vec<Goal>;
 
 /// Pretty-printed proof state
 pub fn pretty_state(state: &ProofState) -> String {

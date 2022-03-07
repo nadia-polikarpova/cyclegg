@@ -4,6 +4,7 @@ use clap::Parser;
 
 #[derive(Parser)]
 pub struct Args {
+  pub filename: String,
   #[clap(short = 'd', long = "max-depth", default_value = "2")]
   pub max_split_depth: usize,
   // logging
