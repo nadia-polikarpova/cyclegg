@@ -72,8 +72,8 @@ pub struct Goal {
   /// Variables we haven't case-split on yet
   scrutinees: VecDeque<Symbol>,
   /// Our goal is to prove lhs == rhs
-  pub lhs: Expr,
-  pub rhs: Expr,
+  lhs_id: Id,
+  rhs_id: Id,
   /// Environment
   env: Env,
 }
@@ -93,6 +93,8 @@ impl Goal {
     egraph.add_expr(&lhs);
     egraph.add_expr(&rhs);
     egraph.rebuild();
+    let lhs_id = egraph.lookup_expr(lhs).unwrap();
+    let rhs_id = egraph.lookup_expr(rhs).unwrap();
 
     let scrs: VecDeque<Symbol> = if 0 < CONFIG.max_split_depth { 
       VecDeque::from_iter(scrutinees.iter().cloned())
@@ -108,14 +110,24 @@ impl Goal {
       rewrites: rewrites.to_vec(),
       ctx: ctx.clone(),
       scrutinees: scrs,
-      lhs: lhs.clone(),
-      rhs: rhs.clone(),
+      lhs_id,
+      rhs_id,
       env: env.clone(),
     }}
 
+  pub fn get_lhs(&self) -> Expr {
+    let extractor = Extractor::new(&self.egraph, AstSize);
+    extractor.find_best(self.lhs_id).1
+  }
+
+  pub fn get_rhs(&self) -> Expr {
+    let extractor = Extractor::new(&self.egraph, AstSize);
+    extractor.find_best(self.rhs_id).1
+  }
+
   /// Have we proven that lhs == rhs?
   pub fn done(&self) -> bool {
-    !self.egraph.equivs(&self.lhs, &self.rhs).is_empty()
+    self.egraph.find(self.lhs_id) == self.egraph.find(self.rhs_id)
   }
 
   /// Saturate the goal by applying all available rewrites
@@ -129,8 +141,8 @@ impl Goal {
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
   fn mk_lemma_rewrites(&self) -> Vec<Rw> {
-    let lhs_id = self.egraph.lookup_expr(&self.lhs).unwrap();
-    let rhs_id = self.egraph.lookup_expr(&self.rhs).unwrap();
+    let lhs_id = self.egraph.find(self.lhs_id);
+    let rhs_id = self.egraph.find(self.rhs_id);
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
 
     // println!("All LHS expressions:");
@@ -193,8 +205,8 @@ impl Goal {
         rewrites: self.rewrites.clone(),
         ctx: self.ctx.clone(),
         scrutinees: self.scrutinees.clone(),
-        lhs: self.lhs.clone(),
-        rhs: self.rhs.clone(),
+        lhs_id: self.lhs_id,
+        rhs_id: self.rhs_id,
         env: self.env.clone(),
       };
 
