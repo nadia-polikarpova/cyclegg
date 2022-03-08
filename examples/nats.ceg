@@ -91,4 +91,49 @@
   (max a b)
   (max b a)
 )
+
+(=== prop24 (a b) (Nat Nat)
+  (eq (max a b) a)
+  (leq b a)
+)
+
+(=== prop25 (a b) (Nat Nat)
+  (eq (max a b) b)
+  (leq a b)
+)
+
+(=== prop31 (a b c) (Nat Nat Nat)
+  (min (min a b) c)
+  (min a (min b c))
+)
+
+(=== prop32 (a b) (Nat Nat)
+  (min a b)
+  (min b a)
+)
+
+(=== prop33 (a b) (Nat Nat)
+  (eq (min a b) a)
+  (leq a b)
+)
+
+(=== prop34 (a b) (Nat Nat)
+  (eq (min a b) b)
+  (leq b a)
+)
+
+(=== prop65 (i m) (Nat Nat)
+  (lt i (S (add m i)))
+  True
+)
+
+(=== prop69 (n m) (Nat Nat)
+  (leq n (add m n))
+  True
+)
+
+(=== prop79 (n m k) (Nat Nat Nat)
+  (sub (sub (S m) n) (S k))
+  (sub (sub m n) k)
+)
 )
