@@ -1,0 +1,44 @@
+(
+(data Bool (True False))
+(:: True Bool)
+(:: False Bool)
+
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(data A ())
+
+(data List (Nil Cons))
+(:: Nil List)
+(:: Cons (-> (A List) List))
+
+(:: add (-> (Nat Nat) Nat))
+(=> (add Z      ?y) ?y             )
+(=> (add (S ?x) ?y) (S (add ?x ?y)))
+
+(:: take (-> (Nat List) List))
+(=> (take Z      ?xs          ) Nil                    )
+(=> (take (S ?n) Nil          ) Nil                    )
+(=> (take (S ?n) (Cons ?x ?xs)) (Cons ?x (take ?n ?xs)))
+
+(:: drop (-> (Nat List) List))
+(=> (drop Z      ?xs          ) ?xs          )
+(=> (drop (S ?n) Nil          ) Nil          )
+(=> (drop (S ?n) (Cons ?x ?xs)) (drop ?n ?xs))
+
+(:: append (-> (List List) List))
+(=> (append Nil           ?ys) ?ys                       )
+(=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
+
+(=== prop01 (n xs) (Nat List)
+  (append (take n xs) (drop n xs))
+  xs
+)
+
+(=== prop56 (n m xs) (Nat Nat List)
+  (drop n (drop m xs))
+  (drop (add n m) xs)
+)
+
+)

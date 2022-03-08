@@ -52,10 +52,15 @@ impl SmallerVar {
 impl Condition<SymbolLang, ()> for SmallerVar {
   /// Returns true if the substitution is into a smaller tuple of variables
   fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
-    let target_ids = self.0.iter().map(|x| subst.get(to_wildcard(x)).unwrap());
     let extractor = Extractor::new(egraph, AstSize);
-    let targets = target_ids.map(|x| extractor.find_best(*x).1);
-    SmallerVar::smaller_tuple(&self.0.iter().zip(targets).collect())
+    // Lookup all variables in the subst; some may be undefined if the lemma has fewer parameters
+    let target_ids_mb = self.0.iter().map(|x| subst.get(to_wildcard(&x)));    
+    let pairs = self.0.iter()
+                  .zip(target_ids_mb)                                       // zip variables with their substitutions
+                  .filter(|(_, mb)| mb.is_some())                           // filter out undefined variables
+                  .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1)); // actually look up the expression by class id
+    // Check that the expressions are smaller variables
+    SmallerVar::smaller_tuple(&pairs.collect())
   }
 }
 
