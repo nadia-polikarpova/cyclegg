@@ -1,3 +1,4 @@
+use std::time::{Instant};
 pub mod parser;
 use parser::{*, goal::*, config::{CONFIG, ARGS}};
 
@@ -8,7 +9,9 @@ fn main() {
 
   for goal in goals {
     println!("Proving {}: {} = {}", goal.name, goal.get_lhs(), goal.get_rhs());
+    let start = Instant::now();
     let result = prove(goal);
-    println!("{}", result);
+    let duration = start.elapsed();
+    println!("{} ({:.2} sec)", result, duration.as_secs_f32());
   }
 }
