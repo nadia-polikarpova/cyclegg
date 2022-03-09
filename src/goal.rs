@@ -72,15 +72,19 @@ pub struct Goal {
   pub egraph: Eg,
   /// Rewrites that are valid for the current goal
   rewrites: Vec<Rw>,
-  /// Context
-  ctx: Context,
-  /// Variables we haven't case-split on yet
+  /// Universally-quantified variables of the goal
+  /// (i.e. top-level parameters and binders derived from them through pattern matching)
+  local_context: Context,
+  /// Variables we can case-split
+  /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
   /// Our goal is to prove lhs == rhs
   lhs_id: Id,
   rhs_id: Id,
   /// Environment
   env: Env,
+  /// Global context (i.e. constructors and top-level bindings)
+  global_context: Context,
 }
 
 impl Goal {
@@ -89,10 +93,10 @@ impl Goal {
     name: &str,      
     lhs: &Expr,
     rhs: &Expr,
+    params: Vec<(Symbol, Type)>,
     env: &Env,
-    ctx: &Context,
+    global_context: &Context,
     rewrites: &[Rw],    
-    scrutinees: &[Symbol],
   ) -> Self {
     let mut egraph: Eg = Default::default();
     egraph.add_expr(&lhs);
@@ -102,22 +106,28 @@ impl Goal {
     let rhs_id = egraph.lookup_expr(rhs).unwrap();
 
     let scrs: VecDeque<Symbol> = if 0 < CONFIG.max_split_depth { 
-      VecDeque::from_iter(scrutinees.iter().cloned())
+      VecDeque::from_iter(params.iter().map(|(x, _)| x).cloned())
     } else {
       let mut d = VecDeque::new();
       d.push_back(Symbol::from(BOUND_EXCEEDED)); 
       d
     };
 
+    let mut local_context = Context::new();
+    for (name, ty) in params.into_iter() {
+      local_context.insert(name, ty);
+    }
+
     Self {
       name: name.to_string(),
       egraph,
       rewrites: rewrites.to_vec(),
-      ctx: ctx.clone(),
+      local_context,
       scrutinees: scrs,
       lhs_id,
       rhs_id,
       env: env.clone(),
+      global_context: global_context.clone(),
     }}
 
   pub fn get_lhs(&self) -> Expr {
@@ -164,7 +174,7 @@ impl Goal {
       for rhs_expr in exprs.get(&rhs_id).unwrap() {
         // TODO: perhaps just take the first right-hand side?
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
-        let is_var = |v| self.scrutinees.contains(v);
+        let is_var = |v| self.local_context.contains_key(v);
         let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
         let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
         let condition = SmallerVar(self.scrutinees.iter().cloned().collect());
@@ -195,8 +205,8 @@ impl Goal {
     let var = self.scrutinees.pop_front().unwrap();
     warn!("case-split on {}", var);
     let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
-    // Get the type of the variable
-    let ty = self.ctx.get(&var).unwrap();
+    // Get the type of the variable, and then remove the variable
+    let ty = self.local_context.get(&var).unwrap();
     // Convert to datatype name
     let dt = Symbol::from(ty.datatype().unwrap());
     // Get the constructors of the datatype
@@ -208,15 +218,16 @@ impl Goal {
         name: if self.name == "top" { String::default() } else { format!("{}:", self.name) },
         egraph: self.egraph.clone(),
         rewrites: self.rewrites.clone(),
-        ctx: self.ctx.clone(),
+        local_context: self.local_context.clone(),
         scrutinees: self.scrutinees.clone(),
         lhs_id: self.lhs_id,
         rhs_id: self.rhs_id,
         env: self.env.clone(),
-      };
+        global_context: self.global_context.clone(),
+      };      
 
       // Get the types of constructor arguments
-      let con_args = self.ctx.get(&con).unwrap().args();
+      let con_args = self.global_context.get(&con).unwrap().args();
       // For each argument: create a fresh variable and add it to the context and to scrutinees
       let mut fresh_vars = vec![];
       for i in 0..con_args.len() {
@@ -225,13 +236,18 @@ impl Goal {
         let fresh_var = Symbol::from(fresh_var_name);        
         fresh_vars.push(fresh_var);
         // Add new variable to context
-        new_goal.ctx.insert(fresh_var, con_args[i].clone());
-        // Only add new variable to scrutinees if its depth doesn't exceed the bound
-        if depth < CONFIG.max_split_depth {
-          new_goal.scrutinees.push_back(fresh_var);
-        } else {
-          new_goal.scrutinees.push_back(Symbol::from(BOUND_EXCEEDED));
-        }               
+        let arg_type = &con_args[i];
+        new_goal.local_context.insert(fresh_var, arg_type.clone());
+        if let Ok(dt) = arg_type.datatype() {
+          if self.env.contains_key(&Symbol::from(dt)) {
+            // Only add new variable to scrutinees if its depth doesn't exceed the bound
+            if depth < CONFIG.max_split_depth {
+              new_goal.scrutinees.push_back(fresh_var);
+            } else {
+              new_goal.scrutinees.push_back(Symbol::from(BOUND_EXCEEDED));
+            }
+          }
+        }    
       }
 
       // Create an application of the constructor to the fresh vars
@@ -246,8 +262,9 @@ impl Goal {
       new_goal.egraph.union(var_id, con_app_id);
       new_goal.egraph.rebuild();
 
-      // Remove old variable from the egraph
+      // Remove old variable from the egraph and context
       remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
+      new_goal.local_context.remove(&var);
 
       // If the constructor has parameters, add all lemmas to the new goal's rewrites
       if !fresh_vars.is_empty() {

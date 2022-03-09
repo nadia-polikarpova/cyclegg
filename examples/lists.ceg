@@ -7,8 +7,6 @@
 (:: Z Nat)
 (:: S (-> (Nat) Nat))
 
-(data A ())
-
 (data List (Nil Cons))
 (:: Nil List)
 (:: Cons (-> (A List) List))

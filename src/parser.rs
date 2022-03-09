@@ -50,15 +50,11 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let param_names: Vec<Symbol> = param_name_list.iter().map(|x| Symbol::from(x.string().unwrap())).collect();
         let param_type_list = decl.list()?[3].list()?;
         let param_types: Vec<Type> = param_type_list.iter().map(|x| Type::new(x.clone())).collect();
-        let mut local_ctx = state.context.clone();
-        // Add parameters to context:
-        for (name, ty) in param_names.iter().zip(param_types.iter()) {
-          local_ctx.insert(name.clone(), ty.clone());
-        }
+        let params = param_names.into_iter().zip(param_types.into_iter()).collect();
 
         let lhs: Expr = decl.list()?[4].to_string().parse().unwrap();
         let rhs: Expr = decl.list()?[5].to_string().parse().unwrap();
-        let goal = Goal::top(name, &lhs, &rhs, &state.env.clone(), &local_ctx, &state.rules.clone(), &param_names);
+        let goal = Goal::top(name, &lhs, &rhs, params, &state.env, &state.context, &state.rules);
         state.goals.push(goal);
       }
       _ => panic!("unknown declaration: {}", decl),
