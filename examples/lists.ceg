@@ -30,8 +30,8 @@
 (=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
 
 (:: map (-> ((-> A A) List) List))
-(=> (map f Nil          ) Nil                      )
-(=> (map f (Cons ?x ?xs)) (Cons (f ?x) (map f ?xs)))
+(=> (map ?f Nil          ) Nil                      )
+(=> (map ?f (Cons ?x ?xs)) (Cons (@ ?f ?x) (map ?f ?xs)))
 
 (=== prop01 (n xs) (Nat List)
   (append (take n xs) (drop n xs))
