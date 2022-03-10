@@ -105,30 +105,23 @@ impl Goal {
     let lhs_id = egraph.lookup_expr(lhs).unwrap();
     let rhs_id = egraph.lookup_expr(rhs).unwrap();
 
-    let scrs: VecDeque<Symbol> = if 0 < CONFIG.max_split_depth { 
-      VecDeque::from_iter(params.iter().map(|(x, _)| x).cloned())
-    } else {
-      let mut d = VecDeque::new();
-      d.push_back(Symbol::from(BOUND_EXCEEDED)); 
-      d
-    };
-
-    let mut local_context = Context::new();
-    for (name, ty) in params.into_iter() {
-      local_context.insert(name, ty);
-    }
-
-    Self {
+    let mut res = Self {
       name: name.to_string(),
       egraph,
       rewrites: rewrites.to_vec(),
-      local_context,
-      scrutinees: scrs,
+      local_context: Context::new(),
+      scrutinees: VecDeque::new(),
       lhs_id,
       rhs_id,
       env: env.clone(),
       global_context: global_context.clone(),
-    }}
+    };
+    for (name, ty) in params {
+      res.add_scrutinee(name, &ty, 0);
+      res.local_context.insert(name, ty);      
+    }
+    res
+  }
 
   pub fn get_lhs(&self) -> Expr {
     let extractor = Extractor::new(&self.egraph, AstSize);
@@ -197,6 +190,21 @@ impl Goal {
     rewrites        
   }
 
+  /// Add var as a scrutinee if its type ty is a datatype;
+  /// if depth bound is exceeded, add a sentinel symbol instead
+  fn add_scrutinee(&mut self, var: Symbol, ty: &Type, depth: usize) {
+    if let Ok(dt) = ty.datatype() {
+      if self.env.contains_key(&Symbol::from(dt)) {
+        // Only add new variable to scrutinees if its depth doesn't exceed the bound
+        if depth < CONFIG.max_split_depth {
+          self.scrutinees.push_back(var);
+        } else {
+          self.scrutinees.push_back(Symbol::from(BOUND_EXCEEDED));
+        }
+      }
+    }
+  }
+
   /// Consume this goal and add its case splits to the proof state
   fn case_split(mut self, state: &mut ProofState) {
     let lemmas = self.mk_lemma_rewrites();
@@ -238,16 +246,7 @@ impl Goal {
         // Add new variable to context
         let arg_type = &con_args[i];
         new_goal.local_context.insert(fresh_var, arg_type.clone());
-        if let Ok(dt) = arg_type.datatype() {
-          if self.env.contains_key(&Symbol::from(dt)) {
-            // Only add new variable to scrutinees if its depth doesn't exceed the bound
-            if depth < CONFIG.max_split_depth {
-              new_goal.scrutinees.push_back(fresh_var);
-            } else {
-              new_goal.scrutinees.push_back(Symbol::from(BOUND_EXCEEDED));
-            }
-          }
-        }    
+        new_goal.add_scrutinee(fresh_var, arg_type, depth);
       }
 
       // Create an application of the constructor to the fresh vars

@@ -29,9 +29,28 @@
 (=> (append Nil           ?ys) ?ys                       )
 (=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
 
+(:: map (-> ((-> A A) List) List))
+(=> (map f Nil          ) Nil                      )
+(=> (map f (Cons ?x ?xs)) (Cons (f ?x) (map f ?xs)))
+
 (=== prop01 (n xs) (Nat List)
   (append (take n xs) (drop n xs))
   xs
+)
+
+(=== prop11 (xs) (List)
+  (drop Z xs)
+  xs
+)
+
+(=== prop12 (n f xs) (Nat (-> A A) List)
+  (drop n (map f xs))
+  (map f (drop n xs))
+)
+
+(=== prop13 (n x xs) (Nat A List)
+  (drop (S n) (Cons x xs))
+  (drop n xs)
 )
 
 (=== prop56 (n m xs) (Nat Nat List)
