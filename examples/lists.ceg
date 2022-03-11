@@ -39,7 +39,7 @@
 
 (:: filter (-> (-> A Bool) List) List)
 (=> (filter ?p Nil          ) Nil                                                     )
-(=> (filter ?p (Cons ?x ?xs)) (ite (@ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?x)))
+(=> (filter ?p (Cons ?x ?xs)) (ite (@ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?xs)))
 
 (=== prop01 (n xs) (Nat List)
   (append (take n xs) (drop n xs))

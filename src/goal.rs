@@ -1,4 +1,4 @@
-use std::{collections::VecDeque};
+use std::{collections::{VecDeque, HashSet}};
 use egg::{*};
 use log::{warn};
 use colored::Colorize;
@@ -205,36 +205,44 @@ impl Goal {
     }
   }
 
-  /// If the egraph contains ITEs whose condition is not a constant or a scrutinee,
+  /// If the egraph contains ITEs whose condition irreducible (i.e. not a constant or a scrutinee),
   /// add a fresh scrutinee to its eclass, so that we can match on it.
   fn split_ite(&mut self) {
     let guard_var = "?g".parse().unwrap();
     let constants = vec![Symbol::from(TRUE), Symbol::from(FALSE)];
+    // Iterator over all reducible symbols (i.e. Boolean constants and scrutinees)
     let reducible = self.scrutinees.iter().chain(constants.iter());
+    // Pattern "(ite ?g ?x ?y)"
     let searcher: Pattern<SymbolLang> = format!("({} {} ?x ?y)", ITE, guard_var).parse().unwrap();
     let matches = searcher.search(&self.egraph);
-    let mut new_vars = vec![];
+    // Collects class IDs of all irreducible guards;
+    // it's a set because the same guard can match more than once, but we only want to add a new scrutinee once
+    let mut irreducible_guards = HashSet::new();
     for m in matches {
       for subst in m.substs {
         let guard_id = subst.get(guard_var).unwrap().clone();
+        // Root symbols of all enodes in guard_id's eclass
         let symbols: Vec<Symbol> = self.egraph[guard_id].nodes.iter().map(|n| n.op).collect();
-        let is_reducible = reducible.clone().any(|s| symbols.contains(s));
-        if !is_reducible {
-          let fresh_var = Symbol::from(format!("g-{}", guard_id));
-          let extractor = Extractor::new(&self.egraph, AstSize);
-          let expr = extractor.find_best(guard_id).1;
-          warn!("adding scrutinee {} to split condition {}", fresh_var, expr);
-          new_vars.push(fresh_var);
-          self.local_context.insert(fresh_var, BOOL_TYPE.parse().unwrap());
-          let new_id = self.egraph.add(SymbolLang::leaf(fresh_var));
-          self.egraph.union(guard_id, self.egraph.find(new_id));
+        // This guard is irreducible if symbols are disjoint from reducible
+        if !reducible.clone().any(|s| symbols.contains(s)) {
+          irreducible_guards.insert(guard_id);
         }
       }
     }
-    self.egraph.rebuild();
-    for v in new_vars {
-      self.scrutinees.push_front(v);
+    // Iterate over all irreducible guard eclasses and add a new scrutinee to each
+    for guard_id in irreducible_guards {
+      let fresh_var = Symbol::from(format!("g-{}", guard_id));
+      // This is here only for logging purposes
+      let expr = Extractor::new(&self.egraph, AstSize).find_best(guard_id).1;
+      warn!("adding scrutinee {} to split condition {}", fresh_var, expr);      
+      self.local_context.insert(fresh_var, BOOL_TYPE.parse().unwrap());
+      // We are adding the new scrutinee to the front of the deque,
+      // because we want to split conditions first, since they don't introduce new variables
+      self.scrutinees.push_front(fresh_var);
+      let new_id = self.egraph.add(SymbolLang::leaf(fresh_var));
+      self.egraph.union(guard_id, self.egraph.find(new_id));
     }
+    self.egraph.rebuild();
   }
 
   /// Consume this goal and add its case splits to the proof state
