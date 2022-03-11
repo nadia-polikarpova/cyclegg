@@ -205,6 +205,38 @@ impl Goal {
     }
   }
 
+  /// If the egraph contains ITEs whose condition is not a constant or a scrutinee,
+  /// add a fresh scrutinee to its eclass, so that we can match on it.
+  fn split_ite(&mut self) {
+    let guard_var = "?g".parse().unwrap();
+    let constants = vec![Symbol::from(TRUE), Symbol::from(FALSE)];
+    let reducible = self.scrutinees.iter().chain(constants.iter());
+    let searcher: Pattern<SymbolLang> = format!("({} {} ?x ?y)", ITE, guard_var).parse().unwrap();
+    let matches = searcher.search(&self.egraph);
+    let mut new_vars = vec![];
+    for m in matches {
+      for subst in m.substs {
+        let guard_id = subst.get(guard_var).unwrap().clone();
+        let symbols: Vec<Symbol> = self.egraph[guard_id].nodes.iter().map(|n| n.op).collect();
+        let is_reducible = reducible.clone().any(|s| symbols.contains(s));
+        if !is_reducible {
+          let fresh_var = Symbol::from(format!("g-{}", guard_id));
+          let extractor = Extractor::new(&self.egraph, AstSize);
+          let expr = extractor.find_best(guard_id).1;
+          warn!("adding scrutinee {} to split condition {}", fresh_var, expr);
+          new_vars.push(fresh_var);
+          self.local_context.insert(fresh_var, BOOL_TYPE.parse().unwrap());
+          let new_id = self.egraph.add(SymbolLang::leaf(fresh_var));
+          self.egraph.union(guard_id, self.egraph.find(new_id));
+        }
+      }
+    }
+    self.egraph.rebuild();
+    for v in new_vars {
+      self.scrutinees.push_front(v);
+    }
+  }
+
   /// Consume this goal and add its case splits to the proof state
   fn case_split(mut self, state: &mut ProofState) {
     let lemmas = self.mk_lemma_rewrites();
@@ -326,7 +358,8 @@ pub fn prove(mut goal: Goal) -> Outcome {
     if goal.done() { 
        // This goal has been discharged, proceed to the next goal
       continue;
-    } 
+    }
+    goal.split_ite();
     if goal.scrutinees.is_empty() {
       // This goal has no more variables to case-split on, 
       // so this goal, and hence the whole conjecture, is invalid

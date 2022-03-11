@@ -3,6 +3,10 @@
 (:: True Bool)
 (:: False Bool)
 
+(:: ite (-> (Bool A A) A))
+(=> (ite True ?x ?y ) ?x)
+(=> (ite False ?x ?y) ?y)
+
 (data Nat (Z S))
 (:: Z Nat)
 (:: S (-> (Nat) Nat))
@@ -30,8 +34,12 @@
 (=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
 
 (:: map (-> ((-> A A) List) List))
-(=> (map ?f Nil          ) Nil                      )
+(=> (map ?f Nil          ) Nil                          )
 (=> (map ?f (Cons ?x ?xs)) (Cons (@ ?f ?x) (map ?f ?xs)))
+
+(:: filter (-> (-> A Bool) List) List)
+(=> (filter ?p Nil          ) Nil                                                     )
+(=> (filter ?p (Cons ?x ?xs)) (ite (@ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?x)))
 
 (=== prop01 (n xs) (Nat List)
   (append (take n xs) (drop n xs))
@@ -51,6 +59,11 @@
 (=== prop13 (n x xs) (Nat A List)
   (drop (S n) (Cons x xs))
   (drop n xs)
+)
+
+(=== prop14 (p xs ys) ((-> A Bool) List List)
+  (filter p (append xs ys))
+  (append (filter p xs) (filter p ys))
 )
 
 (=== prop56 (n m xs) (Nat Nat List)

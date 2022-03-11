@@ -21,6 +21,15 @@
 (=> (lt Z      (S ?y)) True      )
 (=> (lt (S ?x) (S ?y)) (lt ?x ?y))
 
+(:: leq (-> (Nat Nat) Bool))
+(=> (leq Z      ?y) True           )
+(=> (leq (S ?x) Z ) False          )
+(=> (leq (S ?x) (S ?y)) (leq ?x ?y))
+
+(:: ite (-> (Bool Nat Nat) Nat))
+(=> (ite True ?x ?y ) ?x)
+(=> (ite False ?x ?y) ?y)
+
 (=== good1 (n m) (Nat Nat)
   True
   (lt n (add n (S m)))  
@@ -29,5 +38,10 @@
 (=== bad1 (n m) (Nat Nat)
   (add n n)
   (add m m)  
+)
+
+(=== good2 (x y) (Nat Nat)
+  (ite (leq x y) x x)
+  x
 )
 )
