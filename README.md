@@ -4,6 +4,8 @@ but implements them on top of egraphs and equality saturation in order to avoid 
 
 ### TODO
 
+- Do not add duplicate lemmas
+- Detect vacuous goals from condition splitting
 - Add application rewrites for all defined functions?
 - Logging: how to print out which lemma we are applying?
 - Implement fancier termination checking

@@ -19,6 +19,17 @@
 (=> (add Z      ?y) ?y             )
 (=> (add (S ?x) ?y) (S (add ?x ?y)))
 
+(:: leq (-> (Nat Nat) Bool))
+(=> (leq Z      ?y) True           )
+(=> (leq (S ?x) Z ) False          )
+(=> (leq (S ?x) (S ?y)) (leq ?x ?y))
+
+(:: eq (-> (Nat Nat) Bool))
+(=> (eq Z      Z     ) True      )
+(=> (eq Z      (S ?y)) False     )
+(=> (eq (S ?x) Z     ) False     )
+(=> (eq (S ?x) (S ?y)) (eq ?x ?y))
+
 (:: take (-> (Nat (List ?a)) (List ?a)))
 (=> (take Z      ?xs          ) Nil                    )
 (=> (take (S ?n) Nil          ) Nil                    )
@@ -28,6 +39,10 @@
 (=> (drop Z      ?xs          ) ?xs          )
 (=> (drop (S ?n) Nil          ) Nil          )
 (=> (drop (S ?n) (Cons ?x ?xs)) (drop ?n ?xs))
+
+(:: count (-> (Nat (List Nat)) Nat))
+(=> (count ?x Nil          ) Z)
+(=> (count ?x (Cons ?y ?ys)) (ite (eq ?x ?y) (S (count ?x ?ys)) (count ?x ?ys)))
 
 (:: append (-> ((List ?a) (List ?a)) (List ?a)))
 (=> (append Nil           ?ys) ?ys                       )
@@ -44,6 +59,21 @@
 (=== prop01 (n xs) (Nat (List a))
   (append (take n xs) (drop n xs))
   xs
+)
+
+(=== prop02 (n xs ys) (Nat (List Nat) (List Nat))
+  (add (count n xs) (count n ys))
+  (count n (append xs ys))
+)
+
+(=== prop03 (n xs ys) (Nat (List Nat) (List Nat))
+  (leq (count n xs) (count n (append xs ys)))
+  True
+)
+
+(=== prop04 (n xs) (Nat (List Nat))
+  (S (count n xs))
+  (count n (Cons n xs))
 )
 
 (=== prop11 (xs) ((List a))
