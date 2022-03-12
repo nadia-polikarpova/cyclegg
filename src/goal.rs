@@ -328,54 +328,41 @@ impl Goal {
   /// return the concrete types of constructor arguments.
   fn instantiate_constructor(con_ty: &Type, actual: &Type) -> Vec<Type> {
     let (args, ret) = con_ty.args_ret();
+
+    // Add the actual datatype to a fresh egraph
     let mut egraph: Eg = Default::default();
     let actual_as_expr: Expr = format!("{}", actual).parse().unwrap();
-    let root = egraph.add_expr(&actual_as_expr);
+    egraph.add_expr(&actual_as_expr);
     egraph.rebuild();
 
-    // let verbosity = format!("-q{}", CONFIG.log_level as usize);
-    // let filename = format!("target/0.png");    
-    // let dot = egraph.dot();    
-    // dot.run_dot(&["-Tpng", verbosity.as_str(), "-o", filename.as_str()]).unwrap();
-
+    // Create a pattern from the generic return type of the constructor
+    let searcher: Pat = format!("{}", ret).parse().unwrap();
+    let vars = searcher.vars();
+    // This pattern should have a single match in the actual datatype (at the root)
+    let matches = searcher.search(&egraph);
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].substs.len(), 1);
+    let subst = &matches[0].substs[0];
+    // Convert the substitution range from eclass ids to expressions
+    // (each one of these eclasses stores a single expression, since we only added the actual)
+    let extractor = Extractor::new(&egraph, AstSize);
+    let expr_subst = vars.iter().zip(vars.iter().map(|v| extractor.find_best(*subst.get(*v).unwrap()).1)).collect::<Vec<_>>();
 
     let mut res = vec![];
-
+    // For each argument, substitute all vars with their values in expr subst
+    // (we do it using string replacement because RecExprs are so painful to work with;
+    // I tried to do this substitution in the egraph, but that creates problems with cycles)
     for arg in args {
-      let searcher: Pat = format!("{}", ret).parse().unwrap();
-      let applier: Pat = format!("{}", arg).parse().unwrap();
-      // println!("{} -> {}", searcher, applier);
-      let rw = Rw::new("arg", searcher, applier).unwrap();      
-      let mut local_graph = egraph.clone();
-      let matches = rw.search(&local_graph);
-      // println!("{:?}", matches);
-      rw.apply(&mut local_graph, &matches);
-      local_graph.rebuild();
-
-      // let filename = format!("target/{}.png", res.len() + 1);    
-      // let dot = local_graph.dot();
-      // dot.run_dot(&["-Tpng", verbosity.as_str(), "-o", filename.as_str()]).unwrap();
-  
-
-      let local_root = local_graph.find(root);
-      // println!("root = {}", local_root);
-      let both_types: Vec<Type> = get_all_expressions(&local_graph, vec![local_root])
-                                    .get(&local_root)
-                                    .unwrap()
-                                    .iter()
-                                    .map(|x| format!("{}", x).parse().unwrap())
-                                    .collect();
-      if both_types.len() == 1 {
-        // println!("Only one type: {}", both_types[0]);
-        res.push(both_types[0].clone());
-      } else if both_types.len() == 2 {
-        // println!("Two types: {}, {}", both_types[0], both_types[1]);
-        both_types.into_iter().filter(|x| x != actual).for_each(|x| res.push(x));
-      } else {
-        panic!("Expected 1 or 2 types, got {}", both_types.len());
+      let mut arg_string = format!("{}", arg);
+      for (var, t) in expr_subst.iter() {
+        arg_string = arg_string.replace(&format!("{}", var), &format!("{}", t));
       }
+      res.push(arg_string.parse().unwrap());
     }
-    println!("instantiated constructor {} with actual type {} to {:?}", con_ty, actual, res);
+    warn!("instantiated constructor {} with actual type {} to [{}]", 
+      con_ty, 
+      actual, 
+      res.iter().map(|x| format!("{}", x)).collect::<Vec<String>>().join(" "));
     res
   }
 }

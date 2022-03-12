@@ -3,70 +3,70 @@
 (:: True Bool)
 (:: False Bool)
 
-(:: ite (-> (Bool A A) A))
-(=> (ite True ?x ?y ) ?x)
-(=> (ite False ?x ?y) ?y)
-
 (data Nat (Z S))
 (:: Z Nat)
 (:: S (-> (Nat) Nat))
 
 (data List (Nil Cons))
-(:: Nil List)
-(:: Cons (-> (A List) List))
+(:: Nil  (List ?a)                    )
+(:: Cons (-> (?a (List ?a)) (List ?a)))
+
+(:: ite (-> (Bool ?a ?a) ?a))
+(=> (ite True ?x ?y ) ?x)
+(=> (ite False ?x ?y) ?y)
 
 (:: add (-> (Nat Nat) Nat))
 (=> (add Z      ?y) ?y             )
 (=> (add (S ?x) ?y) (S (add ?x ?y)))
 
-(:: take (-> (Nat List) List))
+(:: take (-> (Nat (List ?a)) (List ?a)))
 (=> (take Z      ?xs          ) Nil                    )
 (=> (take (S ?n) Nil          ) Nil                    )
 (=> (take (S ?n) (Cons ?x ?xs)) (Cons ?x (take ?n ?xs)))
 
-(:: drop (-> (Nat List) List))
+(:: drop (-> (Nat (List ?a)) (List ?a)))
 (=> (drop Z      ?xs          ) ?xs          )
 (=> (drop (S ?n) Nil          ) Nil          )
 (=> (drop (S ?n) (Cons ?x ?xs)) (drop ?n ?xs))
 
-(:: append (-> (List List) List))
+(:: append (-> ((List ?a) (List ?a)) (List ?a)))
 (=> (append Nil           ?ys) ?ys                       )
 (=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
 
-(:: map (-> ((-> A A) List) List))
+(:: map (-> ((-> ?a ?b) (List ?a)) (List ?b)))
 (=> (map ?f Nil          ) Nil                          )
 (=> (map ?f (Cons ?x ?xs)) (Cons (@ ?f ?x) (map ?f ?xs)))
 
-(:: filter (-> (-> A Bool) List) List)
+(:: filter (-> (-> ?a Bool) (List ?a)) (List ?a))
 (=> (filter ?p Nil          ) Nil                                                     )
 (=> (filter ?p (Cons ?x ?xs)) (ite (@ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?xs)))
 
-(=== prop01 (n xs) (Nat List)
+(=== prop01 (n xs) (Nat (List a))
   (append (take n xs) (drop n xs))
   xs
 )
 
-(=== prop11 (xs) (List)
+(=== prop11 (xs) ((List a))
   (drop Z xs)
   xs
 )
 
-(=== prop12 (n f xs) (Nat (-> A A) List)
+(=== prop12 (n f xs) (Nat (-> a b) (List a))
   (drop n (map f xs))
   (map f (drop n xs))
 )
 
-(=== prop13 (n x xs) (Nat A List)
+(=== prop13 (n x xs) (Nat a (List a))
   (drop (S n) (Cons x xs))
   (drop n xs)
 )
 
-(=== prop14 (p xs ys) ((-> A Bool) List List)
+(=== prop14 (p xs ys) ((-> a Bool) (List a) (List a))
   (filter p (append xs ys))
   (append (filter p xs) (filter p ys))
 )
 
-(=== prop56 (n m xs) (Nat Nat List)
+(=== prop56 (n m xs) (Nat Nat (List a))
   (drop n (drop m xs))
   (drop (add n m) xs)
 )

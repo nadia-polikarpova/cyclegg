@@ -7,6 +7,10 @@
 (:: Z Nat)
 (:: S (-> (Nat) Nat))
 
+(data List (Nil Cons))
+(:: Nil  (List ?a)                    )
+(:: Cons (-> (?a (List ?a)) (List ?a)))
+
 (:: add (-> (Nat Nat) Nat))
 (=> (add Z      ?y) ?y             )
 (=> (add (S ?x) ?y) (S (add ?x ?y)))
@@ -26,9 +30,13 @@
 (=> (leq (S ?x) Z ) False          )
 (=> (leq (S ?x) (S ?y)) (leq ?x ?y))
 
-(:: ite (-> (Bool Nat Nat) Nat))
+(:: ite (-> (Bool ?a ?a) ?a))
 (=> (ite True ?x ?y ) ?x)
 (=> (ite False ?x ?y) ?y)
+
+(:: head (-> (List ?a) ?a))
+(=> (head Nil) Z)
+(=> (head (Cons ?x ?xs)) ?x)
 
 (=== good1 (n m) (Nat Nat)
   True
@@ -43,5 +51,10 @@
 (=== good2 (x y) (Nat Nat)
   (ite (leq x y) x x)
   x
+)
+
+(=== good3 (xs) ((List Nat))
+  (sub (head xs) (head xs))
+  Z
 )
 )
