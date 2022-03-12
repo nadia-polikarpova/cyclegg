@@ -167,6 +167,10 @@ impl Goal {
       for rhs_expr in exprs.get(&rhs_id).unwrap() {
         // TODO: perhaps just take the first right-hand side?
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
+        if self.rewrites.iter().any(|r| r.name.to_string() == name) {
+          // If we already have this rewrite, skip it
+          continue;
+        }
         let is_var = |v| self.local_context.contains_key(v);
         let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
         let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
