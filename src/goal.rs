@@ -275,7 +275,8 @@ impl Goal {
       };      
 
       // Get the types of constructor arguments
-      let con_args = self.global_context.get(&con).unwrap().args();
+      let con_ty = self.global_context.get(&con).unwrap();
+      let con_args = Goal::instantiate_constructor(con_ty, ty);
       // For each argument: create a fresh variable and add it to the context and to scrutinees
       let mut fresh_vars = vec![];
       for i in 0..con_args.len() {
@@ -321,6 +322,61 @@ impl Goal {
     let verbosity = format!("-q{}", CONFIG.log_level as usize);
     let dot = self.egraph.dot();    
     dot.run_dot(&["-Tpng", verbosity.as_str(), "-o", filename.as_str()]).unwrap();
+  }
+
+  /// Given a polymorphic constructor type and a concrete instantiation of a datatype,
+  /// return the concrete types of constructor arguments.
+  fn instantiate_constructor(con_ty: &Type, actual: &Type) -> Vec<Type> {
+    let (args, ret) = con_ty.args_ret();
+    let mut egraph: Eg = Default::default();
+    let actual_as_expr: Expr = format!("{}", actual).parse().unwrap();
+    let root = egraph.add_expr(&actual_as_expr);
+    egraph.rebuild();
+
+    // let verbosity = format!("-q{}", CONFIG.log_level as usize);
+    // let filename = format!("target/0.png");    
+    // let dot = egraph.dot();    
+    // dot.run_dot(&["-Tpng", verbosity.as_str(), "-o", filename.as_str()]).unwrap();
+
+
+    let mut res = vec![];
+
+    for arg in args {
+      let searcher: Pat = format!("{}", ret).parse().unwrap();
+      let applier: Pat = format!("{}", arg).parse().unwrap();
+      // println!("{} -> {}", searcher, applier);
+      let rw = Rw::new("arg", searcher, applier).unwrap();      
+      let mut local_graph = egraph.clone();
+      let matches = rw.search(&local_graph);
+      // println!("{:?}", matches);
+      rw.apply(&mut local_graph, &matches);
+      local_graph.rebuild();
+
+      // let filename = format!("target/{}.png", res.len() + 1);    
+      // let dot = local_graph.dot();
+      // dot.run_dot(&["-Tpng", verbosity.as_str(), "-o", filename.as_str()]).unwrap();
+  
+
+      let local_root = local_graph.find(root);
+      // println!("root = {}", local_root);
+      let both_types: Vec<Type> = get_all_expressions(&local_graph, vec![local_root])
+                                    .get(&local_root)
+                                    .unwrap()
+                                    .iter()
+                                    .map(|x| format!("{}", x).parse().unwrap())
+                                    .collect();
+      if both_types.len() == 1 {
+        // println!("Only one type: {}", both_types[0]);
+        res.push(both_types[0].clone());
+      } else if both_types.len() == 2 {
+        // println!("Two types: {}, {}", both_types[0], both_types[1]);
+        both_types.into_iter().filter(|x| x != actual).for_each(|x| res.push(x));
+      } else {
+        panic!("Expected 1 or 2 types, got {}", both_types.len());
+      }
+    }
+    println!("instantiated constructor {} with actual type {} to {:?}", con_ty, actual, res);
+    res
   }
 }
 

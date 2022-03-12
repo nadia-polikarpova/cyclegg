@@ -2,7 +2,7 @@ use symbolic_expressions::{Sexp, SexpError};
 use std::{str::FromStr, fmt::Display, collections::HashMap};
 use egg::{*};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Type { 
   repr: Sexp
 }
@@ -12,19 +12,33 @@ impl Type {
     Self { repr }
   }
 
+  /// If this type is a datatype, returns its name and otherwise return error.
   pub fn datatype(&self) -> Result<&String, SexpError> {
-    self.repr.string()
+    match &self.repr {
+      Sexp::String(s) => Ok(s),   // This type is a D
+      Sexp::List(xs) => {         // This type is a type constructor application
+        match xs[0].string()?.as_str() {
+          "->" => Err(SexpError::Other("expected datatype and got arrow".to_string())),
+          _    => xs[0].string()
+        }
+      }
+      _ => panic!("arity: type is empty"),
+    }
   }
 
-  pub fn args(&self) -> Vec<Type> {
+  /// Split a type into arguments and return value
+  /// (arguments are empty if the type is not an arrow)
+  pub fn args_ret(&self) -> (Vec<Type>, Type) {
     match &self.repr {
-      Sexp::String(_) => vec![],  // This type is a D
+      Sexp::String(_) => (vec![], self.clone()),  // This type is a D
       Sexp::List(xs) => {         // This type is a (-> (D1 ... Dn) D)
-        let mut args = vec![];
-        for x in xs[1].list().unwrap() {
-          args.push(Type::new(x.clone()));
+        match xs[0].string().unwrap().as_str() {
+          "->" => {
+            let args = xs[1].list().unwrap().iter().map(|x| Type::new(x.clone())).collect(); 
+            (args, Type::new(xs[2].clone()))
+          }          
+          _    => (vec![], self.clone())
         }
-        args        
       }
       _ => panic!("arity: type is empty"),
     }
