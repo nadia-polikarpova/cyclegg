@@ -19,16 +19,34 @@
 (=> (add Z      ?y) ?y             )
 (=> (add (S ?x) ?y) (S (add ?x ?y)))
 
+(:: sub (-> (Nat Nat) Nat))
+(=> (sub ?x Z)          ?x         )
+(=> (sub Z ?y)          Z          )
+(=> (sub (S ?x) (S ?y)) (sub ?x ?y))
+
 (:: leq (-> (Nat Nat) Bool))
 (=> (leq Z      ?y) True           )
 (=> (leq (S ?x) Z ) False          )
 (=> (leq (S ?x) (S ?y)) (leq ?x ?y))
+
+(:: lt (-> (Nat Nat) Bool))
+(=> (lt ?x     Z     ) False     )
+(=> (lt Z      (S ?y)) True      )
+(=> (lt (S ?x) (S ?y)) (lt ?x ?y))
 
 (:: eq (-> (Nat Nat) Bool))
 (=> (eq Z      Z     ) True      )
 (=> (eq Z      (S ?y)) False     )
 (=> (eq (S ?x) Z     ) False     )
 (=> (eq (S ?x) (S ?y)) (eq ?x ?y))
+
+(:: len (-> ((List ?a)) Nat))
+(=> (len Nil          ) Z            )
+(=> (len (Cons ?x ?xs)) (S (len ?xs)))
+
+(:: elem (-> (Nat (List Nat)) Bool))
+(=> (elem ?n Nil          ) False                            )
+(=> (elem ?n (Cons ?x ?xs)) (ite (eq n x) True (elem ?n ?xs)))
 
 (:: take (-> (Nat (List ?a)) (List ?a)))
 (=> (take Z      ?xs          ) Nil                    )
@@ -55,6 +73,22 @@
 (:: filter (-> (-> ?a Bool) (List ?a)) (List ?a))
 (=> (filter ?p Nil          ) Nil                                                     )
 (=> (filter ?p (Cons ?x ?xs)) (ite (@ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?xs)))
+
+(:: ins (-> (Nat (List Nat)) (List Nat)))
+(=> (ins ?n Nil          ) (Cons ?n Nil)                                                  )
+(=> (ins ?n (Cons ?x ?xs)) (ite (lt ?n ?x) (Cons ?n (Cons ?x ?xs)) (Cons ?x (ins ?n ?xs))))
+
+(:: insort (-> (Nat (List Nat)) (List Nat)))
+(=> (insort ?n Nil          ) (Cons ?n Nil)                                                      )
+(=> (insort ?n (Cons ?x ?xs)) (ite (leq ?n ?x) (Cons ?n (Cons ?x ?xs)) (Cons ?x (insort ?n ?xs))))
+
+(:: ins1 (-> (Nat (List Nat)) (List Nat)))
+(=> (ins1 ?n Nil          ) (Cons ?n Nil)                                                   )
+(=> (ins1 ?n (Cons ?x ?xs)) (ite (eq ?n ?x) (Cons ?n (Cons ?x ?xs)) (Cons ?x (ins1 ?n ?xs))))
+
+(:: sort (-> ((List Nat)) (List Nat)))
+(=> (sort Nil          ) Nil                   )
+(=> (sort (Cons ?x ?xs)) (insort ?x (sort ?xs)))
 
 (=== prop01 (n xs) (Nat (List a))
   (append (take n xs) (drop n xs))
@@ -96,9 +130,38 @@
   (append (filter p xs) (filter p ys))
 )
 
+(=== prop15 (x xs) (Nat (List Nat))
+  (len (ins x xs))
+  (S (len xs))
+)
+
+(=== prop19 (n xs) (Nat (List a))
+  (len (drop n xs))
+  (sub (len xs) n)
+)
+
+(=== prop20 (xs) ((List Nat))
+  (len (sort xs))
+  (len xs)
+)
+
+(=== prop28 (x xs) (Nat (List Nat))
+  (elem x (append xs (Cons x Nil)))
+  True
+)
+
+(=== prop29 (x xs) (Nat (List Nat))
+  (elem x (ins1 x xs))
+  True
+)
+
+(=== prop30 (x xs) (Nat (List Nat))
+  (elem x (ins x xs))
+  True
+)
+
 (=== prop56 (n m xs) (Nat Nat (List a))
   (drop n (drop m xs))
   (drop (add n m) xs)
 )
-
 )
