@@ -4,6 +4,7 @@ but implements them on top of egraphs and equality saturation in order to avoid 
 
 ### TODO
 
+- prop_61: why cannot prove with List Nat?
 - Detect vacuous goals from condition splitting
 - Logging: how to print out which lemma we are applying?
 - Implement fancier termination checking

@@ -363,10 +363,10 @@ impl Goal {
       }
       res.push(arg_string.parse().unwrap());
     }
-    warn!("instantiated constructor {} with actual type {} to [{}]", 
-      con_ty, 
-      actual, 
-      res.iter().map(|x| format!("{}", x)).collect::<Vec<String>>().join(" "));
+    // warn!("instantiated constructor {} with actual type {} to [{}]", 
+    //   con_ty, 
+    //   actual, 
+    //   res.iter().map(|x| format!("{}", x)).collect::<Vec<String>>().join(" "));
     res
   }
 }

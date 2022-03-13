@@ -76,6 +76,14 @@
 (=> (append Nil           ?ys) ?ys                       )
 (=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
 
+(:: last (-> ((List ?a)) ?a))
+(=> (last (Cons ?x Nil)          ) ?x                  )
+(=> (last (Cons ?x (Cons ?y ?ys))) (last (Cons ?y ?ys)))
+
+(:: lastOfTwo (-> ((List ?a) (List ?a)) ?a))
+(=> (lastOfTwo ?xs Nil          ) (last ?xs)          )
+(=> (lastOfTwo ?xs (Cons ?y ?ys)) (last (Cons ?y ?ys)))
+
 (:: butlast (-> ((List a)) (List a)))
 (=> (butlast Nil                    ) Nil                              )
 (=> (butlast (Cons ?x Nil)          ) Nil                              )
@@ -309,4 +317,33 @@
   (zip (drop n xs) (drop n ys))
 )
 
+(=== prop_61 (xs ys) ((List a) (List a))
+  (last (append xs ys))
+  (lastOfTwo xs ys)
+)
+
+(=== prop_64 (x xs) (a (List a))
+  (last (append xs (Cons x Nil)))
+  x
+)
+
+(=== prop_66 (p xs) ((-> a Bool) (List a))
+  (leq (len (filter p xs)) (len xs))
+  True
+)
+
+(=== prop_67 (xs) ((List a))
+  (len (butlast xs))
+  (sub (len xs) (S Z))
+)
+
+(=== prop_68 (n xs) (Nat (List Nat))
+  (leq (len (delete n xs)) (len xs))
+  True
+)
+
+(=== prop_72 (i xs) (Nat (List a))
+  (rev (drop i xs))
+  (take (sub (len xs) i) (rev xs))
+)
 )
