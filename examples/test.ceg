@@ -11,6 +11,9 @@
 (:: Nil  (List ?a)                    )
 (:: Cons (-> (?a (List ?a)) (List ?a)))
 
+(:: id (-> (?a) ?a))
+(=> (id ?x) ?x)
+
 (:: add (-> (Nat Nat) Nat))
 (=> (add Z      ?y) ?y             )
 (=> (add (S ?x) ?y) (S (add ?x ?y)))
@@ -38,6 +41,10 @@
 (=> (head Nil) Z)
 (=> (head (Cons ?x ?xs)) ?x)
 
+(:: map (-> ((-> ?a ?b) (List ?a)) (List ?b)))
+(=> (map ?f Nil          ) Nil                          )
+(=> (map ?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
+
 (=== good1 (n m) (Nat Nat)
   True
   (lt n (add n (S m)))  
@@ -56,5 +63,10 @@
 (=== good3 (xs) ((List Nat))
   (sub (head xs) (head xs))
   Z
+)
+
+(=== good4 (xs) ((List a))
+  (map id xs)
+  xs
 )
 )

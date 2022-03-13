@@ -30,9 +30,12 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
       }
       "::" => {
         // This is a type binding: parse name and type:
-        let name = decl.list()?[1].string()?;
+        let name = Symbol::from(decl.list()?[1].string()?);
         let type_ = Type::new(decl.list()?[2].clone());
-        state.context.insert(Symbol::from(name), type_);
+        if let Some(rw) = partial_application(&name, &type_) {          
+          state.rules.push(rw);
+        }
+        state.context.insert(name, type_);
       }
       "=>" => {
         // This is a rule: parse lhs and rhs:
@@ -61,4 +64,25 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
     }
   }
   Ok(state.goals)
+}
+
+// If type_ is an arrow type, return a rewrite that allows converting partial applications into regular first-order applications,
+// that is: ($ ... ($ name ?x0) ... ?xn) => (name ?x0 ... ?xn).
+fn partial_application(name: &Symbol, type_: &Type) -> Option<Rw> {
+  let (args, _) = type_.args_ret();
+  if args.is_empty() {
+    // This is not a function, so we can't partially apply it
+    None
+  } else {
+    let wildcard = |i: usize| format!("?x{}", i).parse().unwrap();
+    // RHS is a full first-order application of name to as many wildcards as there are arguments:
+    let rhs: Pat = format!("({} {})", name, (0 .. args.len()).map(wildcard).collect::<Vec<String>>().join(" ")).parse().unwrap();
+    // LHS is looks like this "($ ... ($ name ?x0) ... ?xn)":
+    let mut lhs_str: String = format!("({} {} ?x0)", APPLY, name);
+    for i in (0 .. args.len()).skip(1) {
+      lhs_str = format!("({} {} ?x{})", APPLY, lhs_str, i);
+    }
+    let lhs: Pat = lhs_str.parse().unwrap();
+    Some(Rewrite::new(format!("apply-{}", name), lhs, rhs).unwrap())
+  }
 }

@@ -5,7 +5,6 @@ but implements them on top of egraphs and equality saturation in order to avoid 
 ### TODO
 
 - Detect vacuous goals from condition splitting
-- Add application rewrites for all defined functions
 - Logging: how to print out which lemma we are applying?
 - Implement fancier termination checking
 - Try abducing lemmas by finding "almost matches" for current lemmas, and trying to prove that they are equivalent

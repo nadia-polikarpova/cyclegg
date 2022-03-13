@@ -67,6 +67,7 @@ pub const BOOL_TYPE: &str = "Bool";
 pub const ITE: &str = "ite";
 pub const TRUE: &str = "True";
 pub const FALSE: &str = "False";
+pub const APPLY: &str = "$";
 
 pub fn var_depth(var_name: &str) -> usize {
   var_name.matches("-").count()

@@ -17,8 +17,6 @@
 (:: const (-> (?a ?b) ?a))
 (=> (const ?x ?y) ?x)
 
-(=> ($ ($ const ?x) ?y) (const ?x ?y))
-
 (:: ite (-> (Bool ?a ?a) ?a))
 (=> (ite True ?x ?y ) ?x)
 (=> (ite False ?x ?y) ?y)
