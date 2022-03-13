@@ -42,97 +42,102 @@
 (=> (max ?x     Z     ) ?x              )
 (=> (max (S ?x) (S ?y)) (S (max ?x ?y)))
 
-(=== prop06 (n m) (Nat Nat)
+(=== prop_06 (n m) (Nat Nat)
   (sub n (add n m))
   Z
 )
 
-(=== prop07 (n m) (Nat Nat)
+(=== prop_07 (n m) (Nat Nat)
   (sub (add n m) n)
   m
 )
 
-(=== prop08 (k m n) (Nat Nat Nat)
+(=== prop_08 (k m n) (Nat Nat Nat)
   (sub (add k m) (add k n))
   (sub m n)
 )
 
-(=== prop09 (i j k) (Nat Nat Nat)
+(=== prop_09 (i j k) (Nat Nat Nat)
   (sub (sub i j) k)
   (sub i (add j k))
 )
 
-(=== prop10 (m) (Nat)
+(=== prop_10 (m) (Nat)
   (sub m m)
   Z
 )
 
-(=== prop17 (n) (Nat)
+(=== prop_17 (n) (Nat)
   (leq n Z)
   (eq n Z)
 )
 
-(=== prop18 (i m) (Nat Nat)
+(=== prop_18 (i m) (Nat Nat)
   (lt i (S (add i m)))
   True
 )
 
-(=== prop21 (n m) (Nat Nat)
+(=== prop_21 (n m) (Nat Nat)
   (leq n (add n m))
   True
 )
 
-(=== prop22 (a b c) (Nat Nat Nat)
+(=== prop_22 (a b c) (Nat Nat Nat)
   (max (max a b) c)
   (max a (max b c))
 )
 
-(=== prop23 (a b) (Nat Nat)
+(=== prop_23 (a b) (Nat Nat)
   (max a b)
   (max b a)
 )
 
-(=== prop24 (a b) (Nat Nat)
+(=== prop_24 (a b) (Nat Nat)
   (eq (max a b) a)
   (leq b a)
 )
 
-(=== prop25 (a b) (Nat Nat)
+(=== prop_25 (a b) (Nat Nat)
   (eq (max a b) b)
   (leq a b)
 )
 
-(=== prop31 (a b c) (Nat Nat Nat)
+(=== prop_31 (a b c) (Nat Nat Nat)
   (min (min a b) c)
   (min a (min b c))
 )
 
-(=== prop32 (a b) (Nat Nat)
+(=== prop_32 (a b) (Nat Nat)
   (min a b)
   (min b a)
 )
 
-(=== prop33 (a b) (Nat Nat)
+(=== prop_33 (a b) (Nat Nat)
   (eq (min a b) a)
   (leq a b)
 )
 
-(=== prop34 (a b) (Nat Nat)
+(=== prop_34 (a b) (Nat Nat)
   (eq (min a b) b)
   (leq b a)
 )
 
-(=== prop65 (i m) (Nat Nat)
+(=== prop_54 (n m) (Nat Nat)
+  (sub (add m n) n)
+  m
+)
+
+(=== prop_65 (i m) (Nat Nat)
   (lt i (S (add m i)))
   True
 )
 
-(=== prop69 (n m) (Nat Nat)
+(=== prop_69 (n m) (Nat Nat)
   (leq n (add m n))
   True
 )
 
-(=== prop79 (n m k) (Nat Nat Nat)
+(=== prop_79 (n m k) (Nat Nat Nat)
   (sub (sub (S m) n) (S k))
   (sub (sub m n) k)
 )
