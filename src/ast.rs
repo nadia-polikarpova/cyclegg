@@ -77,6 +77,10 @@ pub fn is_descendant(var_name: &String, ancestor_name: &String) -> bool {
   var_name.starts_with(ancestor_name) && var_name.len() > ancestor_name.len()
 }
 
+pub fn is_constructor(var_name: &String) -> bool {
+  var_name.chars().next().unwrap().is_uppercase()
+} 
+
 // Convert a symbol into a wildcard by prepending a '?' to it
 pub fn to_wildcard(s: &Symbol) -> Var {
   format!("?{}", s).parse().unwrap()

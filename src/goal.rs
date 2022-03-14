@@ -154,7 +154,7 @@ impl Goal {
     local_graph.add_expr(expr);
     local_graph.rebuild();
     for reduction in &self.reductions {
-      if reduction.searcher.n_matches(&local_graph) != 0 {
+      if !reduction.search(&local_graph).is_empty() {
         return true;
       }
     }
