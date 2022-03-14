@@ -164,8 +164,12 @@ impl Goal {
 
     let mut rewrites = vec![];
     for lhs_expr in exprs.get(&lhs_id).unwrap() {
-      for rhs_expr in exprs.get(&rhs_id).unwrap() {
-        // TODO: perhaps just take the first right-hand side?
+      let rhss: Vec<_> = if CONFIG.single_rhs {
+        exprs.get(&rhs_id).unwrap().into_iter().take(1).collect()
+      } else {
+        exprs.get(&rhs_id).unwrap().into_iter().collect()
+      };      
+      for rhs_expr in rhss {
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
         if self.rewrites.iter().any(|r| r.name.to_string() == name) {
           // If we already have this rewrite, skip it
@@ -307,8 +311,10 @@ impl Goal {
       new_goal.egraph.rebuild();
 
       // Remove old variable from the egraph and context
-      remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
-      new_goal.local_context.remove(&var);
+      if !CONFIG.keep_used_scrutinees {
+        remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
+        new_goal.local_context.remove(&var);
+      }
 
       // If the constructor has parameters, add all lemmas to the new goal's rewrites
       if !fresh_vars.is_empty() {

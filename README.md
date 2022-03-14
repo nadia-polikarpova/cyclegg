@@ -5,6 +5,7 @@ but implements them on top of egraphs and equality saturation in order to avoid 
 ### TODO
 
 - prop_61: why cannot prove with List Nat?
+- Optimize lemma generation so that we can run it with all RHSs and keep scrutinees
 - Detect vacuous goals from condition splitting
 - Logging: how to print out which lemma we are applying?
 - Implement fancier termination checking
