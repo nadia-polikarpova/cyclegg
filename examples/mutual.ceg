@@ -1,0 +1,73 @@
+(
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(data List (Nil Cons))
+(:: Nil  (List ?a)                    )
+(:: Cons (-> (?a (List ?a)) (List ?a)))
+
+(data Tm (Var Cst App))
+(:: Var (-> (?a                 ) (Tm ?a)))
+(:: Cst (-> (Nat                ) (Tm ?a)))
+(:: App (-> ((Expr ?a) (Expr ?a)) (Tm ?a)))
+
+(data Expr (MkExpr))
+(:: MkExpr (-> ((Tm ?a) Nat) (Expr ?a)))
+
+(:: id (-> (?a) ?a))
+(=> (id ?x) ?x)
+
+(:: comp (-> ((-> ?b ?c) (-> ?a ?b) (?a)) ?c))
+(=> (comp ?f ?g ?x) ($ ?f ($ ?g ?x)))
+
+(:: map (-> ((-> ?a ?b) (List ?a)) (List ?b)))
+(=> (map ?f Nil          ) Nil                          )
+(=> (map ?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
+
+(:: mapE (-> ((-> ?a ?b) (Expr ?a)) (Expr ?b)))
+(=> (mapE ?f (MkExpr ?t ?n)) (MkExpr (mapT ?f ?t) ?n))
+
+(:: mapT (-> ((-> ?a ?b) (Tm ?a)) (Tm ?b)))
+(=> (mapT ?f (Var ?x)     ) (Var ($ ?f ?x))                  )
+(=> (mapT ?f (Cst ?n)     ) (Cst ?n)                         )
+(=> (mapT ?f (App ?e1 ?e2)) (App (mapE ?f ?e1) (mapE ?f ?e2)))
+
+(:: argsE (-> ((Expr ?a)) (List (Expr ?a))))
+(=> (argsE (MkExpr ?t ?n)) (argsT ?t))
+
+(:: argsT (-> ((Tm ?a)) (List (Expr ?a))))
+(=> (argsT (Var ?x)     ) Nil)
+(=> (argsT (Cst ?n)     ) Nil)
+(=> (argsT (App ?e1 ?e2)) (Cons ?e2 (argsE ?e1)))
+
+(:: headE (-> ((Expr ?a)) (Expr ?a)))
+(=> (headE (MkExpr (Var ?x) ?n)     ) (MkExpr (Var ?x) ?n))
+(=> (headE (MkExpr (Cst ?x) ?n)     ) (MkExpr (Cst ?x) ?n))
+(=> (headE (MkExpr (App ?e1 ?e2) ?n)) (headE ?e1)         )
+
+(=== prop_1 (e) ((Expr a))
+  (mapE id e)
+  e
+)
+
+(=== prop_2 (f g e) ((-> ?b ?c) (-> ?a ?b) (Expr a))
+  (mapE ($ ($ comp f) g) e)
+  (mapE f (mapE g e))
+)
+
+(=== prop_3 (f e) ((-> a b) (Expr a))
+  (argsE (mapE f e))
+  (map ($ mapE f) (argsE e))
+)
+
+(=== prop_4 (f e) ((-> a b) (Tm a))
+  (argsT (mapT f e))
+  (map ($ mapE f) (argsT e))
+)
+
+(=== prop_5 (f e) ((-> a b) (Expr a))
+  (headE (mapE f e))
+  (mapE f (headE e))
+)
+)
