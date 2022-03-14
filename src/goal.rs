@@ -70,8 +70,9 @@ pub struct Goal {
   pub name: String,
   /// Equivalences we already proved
   pub egraph: Eg,
-  /// Rewrites that are valid for the current goal
-  rewrites: Vec<Rw>,
+  /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
+  reductions: Vec<Rw>,
+  lemmas: Vec<Rw>,
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   local_context: Context,
@@ -96,7 +97,7 @@ impl Goal {
     params: Vec<(Symbol, Type)>,
     env: &Env,
     global_context: &Context,
-    rewrites: &[Rw],    
+    reductions: &[Rw],    
   ) -> Self {
     let mut egraph: Eg = Default::default();
     egraph.add_expr(&lhs);
@@ -108,7 +109,8 @@ impl Goal {
     let mut res = Self {
       name: name.to_string(),
       egraph,
-      rewrites: rewrites.to_vec(),
+      reductions: reductions.to_vec(),
+      lemmas: vec![],
       local_context: Context::new(),
       scrutinees: VecDeque::new(),
       lhs_id,
@@ -140,7 +142,8 @@ impl Goal {
 
   /// Saturate the goal by applying all available rewrites
   pub fn saturate(mut self) -> Self {
-    let runner = Runner::default().with_egraph(self.egraph).run(self.rewrites.iter());
+    let rewrites = self.reductions.iter().chain(self.lemmas.iter());
+    let runner = Runner::default().with_egraph(self.egraph).run(rewrites);
     self.egraph = runner.egraph;
     self
   }
@@ -171,7 +174,8 @@ impl Goal {
       };      
       for rhs_expr in rhss {
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
-        if self.rewrites.iter().any(|r| r.name.to_string() == name) {
+        let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
+        if existing_lemmas.any(|r| r.name.to_string() == name) {
           // If we already have this rewrite, skip it
           continue;
         }
@@ -271,9 +275,10 @@ impl Goal {
     // (we process constructors in reverse order so that base case end up at the top of the stack)
     for &con in cons.iter().rev() {
       let mut new_goal = Goal {
-        name: if self.name == "top" { String::default() } else { format!("{}:", self.name) },
+        name: format!("{}:", self.name),
         egraph: self.egraph.clone(),
-        rewrites: self.rewrites.clone(),
+        reductions: self.reductions.clone(),
+        lemmas: self.lemmas.iter().chain(lemmas.iter()).cloned().collect(),
         local_context: self.local_context.clone(),
         scrutinees: self.scrutinees.clone(),
         lhs_id: self.lhs_id,
@@ -314,11 +319,6 @@ impl Goal {
       if !CONFIG.keep_used_scrutinees {
         remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
         new_goal.local_context.remove(&var);
-      }
-
-      // If the constructor has parameters, add all lemmas to the new goal's rewrites
-      if !fresh_vars.is_empty() {
-        new_goal.rewrites.extend(lemmas.clone());
       }
 
       // Add the subgoal to the proof state
