@@ -148,6 +148,19 @@ impl Goal {
     self
   }
 
+  /// Check whether an expression is reducible using this goal's reductions
+  pub fn is_reducible(&self, expr: &Expr) -> bool {
+    let mut local_graph: Eg = Default::default();
+    local_graph.add_expr(expr);
+    local_graph.rebuild();
+    for reduction in &self.reductions {
+      if reduction.searcher.n_matches(&local_graph) != 0 {
+        return true;
+      }
+    }
+    false
+  }
+
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
@@ -156,23 +169,11 @@ impl Goal {
     let rhs_id = self.egraph.find(self.rhs_id);
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
 
-    // println!("All LHS expressions:");
-    // for le in exprs.get(&lhs_id).unwrap() {
-    //   println!("{}", le);
-    // }
-    // println!("All RHS expressions:");
-    // for re in exprs.get(&rhs_id).unwrap() {
-    //   println!("{}", re);
-    // }
-
+    let all_lhss = exprs.get(&lhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true });
+    let all_rhss = exprs.get(&rhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true });
     let mut rewrites = vec![];
-    for lhs_expr in exprs.get(&lhs_id).unwrap() {
-      let rhss: Vec<_> = if CONFIG.single_rhs {
-        exprs.get(&rhs_id).unwrap().into_iter().take(1).collect()
-      } else {
-        exprs.get(&rhs_id).unwrap().into_iter().collect()
-      };      
-      for rhs_expr in rhss {
+    for lhs_expr in all_lhss {
+      for rhs_expr in all_rhss.clone() {
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
         let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
         if existing_lemmas.any(|r| r.name.to_string() == name) {
@@ -189,11 +190,13 @@ impl Goal {
           warn!("creating lemma: {} => {}", lhs, rhs);
           let lemma = Rewrite::new(name, lhs, ConditionalApplier {condition: condition, applier: rhs}).unwrap();
           rewrites.push(lemma);
+          if CONFIG.single_rhs { break };
         } else if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
           // otherwise if lhs has no extra wildcards, create a lemma rhs => lhs
           warn!("creating lemma: {} => {}", rhs, lhs);
           let lemma = Rewrite::new(name, rhs, ConditionalApplier {condition: condition, applier: lhs}).unwrap();
           rewrites.push(lemma);
+          if CONFIG.single_rhs { break };
         } else {
           warn!("cannot create a lemma from {} and {}", lhs, rhs);
         }
