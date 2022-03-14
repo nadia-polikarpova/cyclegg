@@ -38,8 +38,8 @@
 (=> (min (S ?x) (S ?y)) (S (min ?x ?y)))
 
 (:: max (-> (Nat Nat) Nat))
-(=> (max Z      ?y    ) ?y              )
-(=> (max ?x     Z     ) ?x              )
+(=> (max Z      ?y    ) ?y             )
+(=> (max ?x     Z     ) ?x             )
 (=> (max (S ?x) (S ?y)) (S (max ?x ?y)))
 
 (=== prop_06 (n m) (Nat Nat)
