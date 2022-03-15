@@ -404,6 +404,7 @@ pub fn pretty_state(state: &ProofState) -> String {
 }
 
 /// Outcome of a proof attempt
+#[derive(Debug)]
 pub enum Outcome {
   Valid,
   Invalid,

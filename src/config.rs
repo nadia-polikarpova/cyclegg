@@ -9,7 +9,7 @@ pub struct Args {
   pub max_split_depth: usize,
   #[clap(short = 'k', long = "keep-used")]
   pub keep_used_scrutinees: bool,
-  #[clap(short = 'r', long = "single-rhs")]
+  #[clap(short = 's', long = "single-rhs")]
   pub single_rhs: bool,
   #[clap(short = 'i', long = "irreducible")]
   pub irreducible_only: bool,
@@ -19,8 +19,10 @@ pub struct Args {
   // logging
   #[clap(short = 'l', long = "log", default_value = "ERROR")]
   pub log_level: String,
-  #[clap(short, long)]
-  pub save_graphs: bool
+  #[clap(short = 'g', long = "save-graphs")]
+  pub save_graphs: bool,
+  #[clap(short = 'r', long = "save-results")]
+  pub save_results: bool,
 }
 
 pub struct Config {
@@ -32,7 +34,8 @@ pub struct Config {
   pub timeout: Option<u64>,
   // logging
   pub log_level: Level,
-  pub save_graphs: bool
+  pub save_graphs: bool,
+  pub save_results: bool
 }
 
 impl Config {
@@ -44,7 +47,8 @@ impl Config {
       irreducible_only: args.irreducible_only,
       timeout: if args.timeout == 0 { None } else { Some(args.timeout) },
       log_level: args.log_level.parse().unwrap(),
-      save_graphs: args.save_graphs
+      save_graphs: args.save_graphs,
+      save_results: args.save_results
     }
   }
 }
