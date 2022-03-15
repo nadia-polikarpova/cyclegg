@@ -2,6 +2,7 @@ use std::{collections::{VecDeque, HashSet}};
 use egg::{*};
 use log::{warn};
 use colored::Colorize;
+use std::time::{Instant, Duration};
 
 #[path = "./ast.rs"] pub mod ast;
 #[path = "./egraph.rs"] pub mod egraph;
@@ -164,16 +165,19 @@ impl Goal {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
-  fn mk_lemma_rewrites(&self) -> Vec<Rw> {
+  fn mk_lemma_rewrites(&self, state: &ProofState) -> Vec<Rw> {
     let lhs_id = self.egraph.find(self.lhs_id);
     let rhs_id = self.egraph.find(self.rhs_id);
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
 
-    let all_lhss = exprs.get(&lhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true });
-    let all_rhss = exprs.get(&rhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true });
+    let all_lhss: Vec<_> = exprs.get(&lhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true }).collect();
+    let all_rhss: Vec<_> = exprs.get(&rhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true }).collect();
+
     let mut rewrites = vec![];
     for lhs_expr in all_lhss {
-      for rhs_expr in all_rhss.clone() {
+      for rhs_expr in all_rhss.iter() {
+        if state.timeout() { return rewrites; }
+
         let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
         let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
         if existing_lemmas.any(|r| r.name.to_string() == name) {
@@ -262,7 +266,7 @@ impl Goal {
 
   /// Consume this goal and add its case splits to the proof state
   fn case_split(mut self, state: &mut ProofState) {
-    let lemmas = self.mk_lemma_rewrites();
+    let lemmas = self.mk_lemma_rewrites(state);    
 
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
@@ -325,7 +329,7 @@ impl Goal {
       }
 
       // Add the subgoal to the proof state
-      state.push(new_goal);
+      state.goals.push(new_goal);
     }
   }
 
@@ -382,11 +386,21 @@ impl Goal {
 
 /// A proof state is a list of subgoals,
 /// all of which have to be discharged
-pub type ProofState = Vec<Goal>;
+pub struct ProofState {
+  goals: Vec<Goal>,
+  start_time: Instant,
+}
+
+impl ProofState {
+  // Has timeout been reached?
+  pub fn timeout(&self) -> bool {
+    CONFIG.timeout.is_some() && self.start_time.elapsed() > Duration::new(CONFIG.timeout.unwrap(), 0)
+  }
+}
 
 /// Pretty-printed proof state
 pub fn pretty_state(state: &ProofState) -> String {
-  format!("[{}]", state.iter().map(|g| g.name.clone()).collect::<Vec<String>>().join(", "))
+  format!("[{}]", state.goals.iter().map(|g| g.name.clone()).collect::<Vec<String>>().join(", "))
 }
 
 /// Outcome of a proof attempt
@@ -394,6 +408,7 @@ pub enum Outcome {
   Valid,
   Invalid,
   Unknown,
+  Timeout
 }
 
 impl std::fmt::Display for Outcome {
@@ -402,18 +417,23 @@ impl std::fmt::Display for Outcome {
       Outcome::Valid => write!(f, "{}", "VALID".green()),
       Outcome::Invalid => write!(f, "{}", "INVALID".red()),
       Outcome::Unknown => write!(f, "{}", "UNKNOWN".yellow()),
+      Outcome::Timeout => write!(f, "{}", "TIMEOUT".yellow()),
     }
   }
 }
 
 /// Top-level interface to the theorem prover.
-pub fn prove(mut goal: Goal) -> Outcome {
-  let mut state = vec![goal];
-  while !state.is_empty() {
+pub fn prove(mut goal: Goal) -> Outcome {  
+  let mut state = ProofState { goals: vec![goal], start_time: Instant::now() };
+  while !state.goals.is_empty() {
+    if state.timeout() {
+      return Outcome::Timeout;
+    }
+
     // TODO: This should be info! but I don't know how to suppress all the info output from egg
     warn!("PROOF STATE: {}", pretty_state(&state));
     // Pop the first subgoal
-    goal = state.pop().unwrap();
+    goal = state.goals.pop().unwrap();
     // Saturate the goal
     goal = goal.saturate();
     if CONFIG.save_graphs {

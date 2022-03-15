@@ -13,6 +13,9 @@ pub struct Args {
   pub single_rhs: bool,
   #[clap(short = 'i', long = "irreducible")]
   pub irreducible_only: bool,
+  // timeout
+  #[clap(short = 't', long = "timeout", default_value = "0")]
+  pub timeout: u64,
   // logging
   #[clap(short = 'l', long = "log", default_value = "ERROR")]
   pub log_level: String,
@@ -25,6 +28,8 @@ pub struct Config {
   pub keep_used_scrutinees: bool,
   pub single_rhs: bool,
   pub irreducible_only: bool,
+  // timeout
+  pub timeout: Option<u64>,
   // logging
   pub log_level: Level,
   pub save_graphs: bool
@@ -37,6 +42,7 @@ impl Config {
       keep_used_scrutinees: args.keep_used_scrutinees,
       single_rhs: args.single_rhs,
       irreducible_only: args.irreducible_only,
+      timeout: if args.timeout == 0 { None } else { Some(args.timeout) },
       log_level: args.log_level.parse().unwrap(),
       save_graphs: args.save_graphs
     }
