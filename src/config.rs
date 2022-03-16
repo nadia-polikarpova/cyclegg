@@ -13,6 +13,8 @@ pub struct Args {
   pub single_rhs: bool,
   #[clap(short = 'i', long = "irreducible")]
   pub irreducible_only: bool,
+  #[clap(short = 'c', long = "no-cond-split")]
+  pub no_cond_split: bool,
   // timeout
   #[clap(short = 't', long = "timeout", default_value = "0")]
   pub timeout: u64,
@@ -27,6 +29,7 @@ pub struct Args {
 
 pub struct Config {
   pub max_split_depth: usize,
+  pub split_conditionals: bool,
   pub keep_used_scrutinees: bool,
   pub single_rhs: bool,
   pub irreducible_only: bool,
@@ -42,6 +45,7 @@ impl Config {
   fn from_args(args: &Args) -> Self {
     Self {
       max_split_depth: args.max_split_depth,
+      split_conditionals: !args.no_cond_split,
       keep_used_scrutinees: args.keep_used_scrutinees,
       single_rhs: args.single_rhs,
       irreducible_only: args.irreducible_only,
