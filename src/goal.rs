@@ -177,13 +177,6 @@ impl Goal {
     for lhs_expr in all_lhss {
       for rhs_expr in all_rhss.iter() {
         if state.timeout() { return rewrites; }
-
-        let name = format!("lemma-{}={}", lhs_expr, rhs_expr);
-        let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
-        if existing_lemmas.any(|r| r.name.to_string() == name) {
-          // If we already have this rewrite, skip it
-          continue;
-        }
         let is_var = |v| self.local_context.contains_key(v);
         let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
         let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
@@ -191,15 +184,10 @@ impl Goal {
 
         if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
           // if rhs has no extra wildcards, create a lemma lhs => rhs
-          warn!("creating lemma: {} => {}", lhs, rhs);
-          let lemma = Rewrite::new(name, lhs, ConditionalApplier {condition: condition, applier: rhs}).unwrap();
-          rewrites.push(lemma);
+          self.add_lemma(lhs, rhs, condition, &mut rewrites);
           if CONFIG.single_rhs { break };
         } else if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
-          // otherwise if lhs has no extra wildcards, create a lemma rhs => lhs
-          warn!("creating lemma: {} => {}", rhs, lhs);
-          let lemma = Rewrite::new(name, rhs, ConditionalApplier {condition: condition, applier: lhs}).unwrap();
-          rewrites.push(lemma);
+          self.add_lemma(rhs, lhs, condition, &mut rewrites);
           if CONFIG.single_rhs { break };
         } else {
           warn!("cannot create a lemma from {} and {}", lhs, rhs);
@@ -208,6 +196,17 @@ impl Goal {
     }
     rewrites        
   }
+
+  fn add_lemma(&self, lhs: Pat, rhs: Pat, cond: SmallerVar, rewrites: &mut Vec<Rw>) {
+    let name = format!("lemma-{}={}", lhs, rhs);
+    let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
+    if !existing_lemmas.any(|r| r.name.to_string() == name) {
+      // Only add the lemma if we don't already have it:    
+      warn!("creating lemma: {} => {}", lhs, rhs);
+      let lemma = Rewrite::new(name, lhs, ConditionalApplier {condition: cond, applier: rhs}).unwrap();
+      rewrites.push(lemma);
+    }
+  }  
 
   /// Add var as a scrutinee if its type ty is a datatype;
   /// if depth bound is exceeded, add a sentinel symbol instead
