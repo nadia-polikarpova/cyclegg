@@ -7,8 +7,8 @@
 (=> (add Z ?y) ?y)
 (=> (add (S ?x) ?y) (S (add ?x ?y)))
 
-(=== add_commutative (x y) (Nat Nat)
-  (add x y)
-  (add y x)
+(=== add_commutative (n m) (Nat Nat)
+  (add n m)
+  (add m n)
 )
 )
