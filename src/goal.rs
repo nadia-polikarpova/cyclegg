@@ -169,25 +169,27 @@ impl Goal {
     let lhs_id = self.egraph.find(self.lhs_id);
     let rhs_id = self.egraph.find(self.rhs_id);
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
-
-    let all_lhss: Vec<_> = exprs.get(&lhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true }).collect();
-    let all_rhss: Vec<_> = exprs.get(&rhs_id).unwrap().iter().filter(|e| if CONFIG.irreducible_only { !self.is_reducible(e) } else { true }).collect();
+    let is_var = |v| self.local_context.contains_key(v);
 
     let mut rewrites = vec![];
-    for lhs_expr in all_lhss {
-      for rhs_expr in all_rhss.iter() {
+    for lhs_expr in exprs.get(&lhs_id).unwrap() {
+      let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
+      if (CONFIG.irreducible_only && self.is_reducible(lhs_expr)) || has_guard_wildcards(&lhs) {
+        continue;
+      }
+      for rhs_expr in exprs.get(&rhs_id).unwrap() {
         if state.timeout() { return rewrites; }
-        let is_var = |v| self.local_context.contains_key(v);
-        let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
         let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
+        if (CONFIG.irreducible_only && self.is_reducible(rhs_expr)) || has_guard_wildcards(&rhs) {
+          continue;
+        }
         let condition = SmallerVar(self.scrutinees.iter().cloned().collect());
-
         if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
           // if rhs has no extra wildcards, create a lemma lhs => rhs
-          self.add_lemma(lhs, rhs, condition, &mut rewrites);
+          self.add_lemma(lhs.clone(), rhs, condition, &mut rewrites);
           if CONFIG.single_rhs { break };
         } else if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
-          self.add_lemma(rhs, lhs, condition, &mut rewrites);
+          self.add_lemma(rhs, lhs.clone(), condition, &mut rewrites);
           if CONFIG.single_rhs { break };
         } else {
           warn!("cannot create a lemma from {} and {}", lhs, rhs);
@@ -201,12 +203,12 @@ impl Goal {
     let name = format!("lemma-{}={}", lhs, rhs);
     let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
     if !existing_lemmas.any(|r| r.name.to_string() == name) {
-      // Only add the lemma if we don't already have it:    
+      // Only add the lemma if we don't already have it:
       warn!("creating lemma: {} => {}", lhs, rhs);
       let lemma = Rewrite::new(name, lhs, ConditionalApplier {condition: cond, applier: rhs}).unwrap();
       rewrites.push(lemma);
     }
-  }  
+  }
 
   /// Add var as a scrutinee if its type ty is a datatype;
   /// if depth bound is exceeded, add a sentinel symbol instead
@@ -249,7 +251,7 @@ impl Goal {
     }
     // Iterate over all irreducible guard eclasses and add a new scrutinee to each
     for guard_id in irreducible_guards {
-      let fresh_var = Symbol::from(format!("g-{}", guard_id));
+      let fresh_var = Symbol::from(format!("{}{}", GUARD_PREFIX, guard_id));
       // This is here only for logging purposes
       let expr = Extractor::new(&self.egraph, AstSize).find_best(guard_id).1;
       warn!("adding scrutinee {} to split condition {}", fresh_var, expr);      

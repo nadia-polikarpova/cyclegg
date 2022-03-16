@@ -68,6 +68,7 @@ pub const ITE: &str = "ite";
 pub const TRUE: &str = "True";
 pub const FALSE: &str = "False";
 pub const APPLY: &str = "$";
+pub const GUARD_PREFIX: &str = "g-";
 
 pub fn var_depth(var_name: &str) -> usize {
   var_name.matches("-").count()
@@ -84,6 +85,10 @@ pub fn is_constructor(var_name: &String) -> bool {
 // Convert a symbol into a wildcard by prepending a '?' to it
 pub fn to_wildcard(s: &Symbol) -> Var {
   format!("?{}", s).parse().unwrap()
+}
+
+pub fn has_guard_wildcards(p: &Pat) -> bool {
+  p.vars().iter().any(|v| v.to_string().starts_with(format!("?{}", GUARD_PREFIX).as_str()))
 }
 
 // Convert e into a pattern by replacing all symbols where is_var holds with wildcards
