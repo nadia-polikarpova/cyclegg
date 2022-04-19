@@ -2,6 +2,11 @@
 It is based on the ideas from [CycleQ](https://github.com/ec-jones/cycleq)
 but implements them on top of egraphs and equality saturation in order to avoid backtracking proof search.
 
+To prove commutativity of addition, run:
+```
+cargo run -- examples/add.ceg
+```
+
 ### TODO
 
 - prop_61: why cannot prove with List Nat?

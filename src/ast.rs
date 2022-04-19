@@ -31,7 +31,7 @@ impl Type {
   pub fn args_ret(&self) -> (Vec<Type>, Type) {
     match &self.repr {
       Sexp::String(_) => (vec![], self.clone()),  // This type is a D
-      Sexp::List(xs) => {         // This type is a (-> (D1 ... Dn) D)
+      Sexp::List(xs) => {         // This is a type constructor application
         match xs[0].string().unwrap().as_str() {
           "->" => {
             let args = xs[1].list().unwrap().iter().map(|x| Type::new(x.clone())).collect(); 
@@ -87,6 +87,8 @@ pub fn to_wildcard(s: &Symbol) -> Var {
   format!("?{}", s).parse().unwrap()
 }
 
+// Does this pattern contain a wildcard derived from a guard variable?
+// If so, we don't want to use it in a lemma because it cannot possibly be applied in a useful way.
 pub fn has_guard_wildcards(p: &Pat) -> bool {
   p.vars().iter().any(|v| v.to_string().starts_with(format!("?{}", GUARD_PREFIX).as_str()))
 }

@@ -189,6 +189,7 @@ impl Goal {
           self.add_lemma(lhs.clone(), rhs, condition, &mut rewrites);
           if CONFIG.single_rhs { break };
         } else if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
+          // if lhs has no extra wildcards, create a lemma rhs => lhs
           self.add_lemma(rhs, lhs.clone(), condition, &mut rewrites);
           if CONFIG.single_rhs { break };
         } else {
@@ -199,6 +200,7 @@ impl Goal {
     rewrites        
   }
 
+  /// Add a rewrite `lhs => rhs` to `rewrites` if not already present
   fn add_lemma(&self, lhs: Pat, rhs: Pat, cond: SmallerVar, rewrites: &mut Vec<Rw>) {
     let name = format!("lemma-{}={}", lhs, rhs);
     let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
@@ -210,7 +212,7 @@ impl Goal {
     }
   }
 
-  /// Add var as a scrutinee if its type ty is a datatype;
+  /// Add var as a scrutinee if its type `ty` is a datatype;
   /// if depth bound is exceeded, add a sentinel symbol instead
   fn add_scrutinee(&mut self, var: Symbol, ty: &Type, depth: usize) {
     if let Ok(dt) = ty.datatype() {
@@ -225,7 +227,8 @@ impl Goal {
     }
   }
 
-  /// If the egraph contains ITEs whose condition irreducible (i.e. not a constant or a scrutinee),
+  /// If the egraph contains ITEs whose condition is "irreducible" 
+  /// (i.e. not equivalent to a constant or a scrutinee variable),
   /// add a fresh scrutinee to its eclass, so that we can match on it.
   fn split_ite(&mut self) {
     let guard_var = "?g".parse().unwrap();
@@ -280,7 +283,7 @@ impl Goal {
     // Get the constructors of the datatype
     let cons = self.env.get(&dt).unwrap();
     // For each constructor, create a new goal and push it onto the proof state
-    // (we process constructors in reverse order so that base case end up at the top of the stack)
+    // (we process constructors in reverse order so that base case ends up at the top of the stack)
     for &con in cons.iter().rev() {
       let mut new_goal = Goal {
         name: format!("{}:", self.name),
@@ -324,10 +327,8 @@ impl Goal {
       new_goal.egraph.rebuild();
 
       // Remove old variable from the egraph and context
-      if !CONFIG.keep_used_scrutinees {
-        remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
-        new_goal.local_context.remove(&var);
-      }
+      remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
+      new_goal.local_context.remove(&var);
 
       // Add the subgoal to the proof state
       state.goals.push(new_goal);
@@ -377,10 +378,6 @@ impl Goal {
       }
       res.push(arg_string.parse().unwrap());
     }
-    // warn!("instantiated constructor {} with actual type {} to [{}]", 
-    //   con_ty, 
-    //   actual, 
-    //   res.iter().map(|x| format!("{}", x)).collect::<Vec<String>>().join(" "));
     res
   }
 }

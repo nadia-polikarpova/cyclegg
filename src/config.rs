@@ -7,8 +7,6 @@ pub struct Args {
   pub filename: String,
   #[clap(short = 'd', long = "max-depth", default_value = "3")]
   pub max_split_depth: usize,
-  #[clap(short = 'k', long = "keep-used")]
-  pub keep_used_scrutinees: bool,
   #[clap(short = 's', long = "single-rhs")]
   pub single_rhs: bool,
   #[clap(short = 'i', long = "irreducible")]
@@ -30,7 +28,6 @@ pub struct Args {
 pub struct Config {
   pub max_split_depth: usize,
   pub split_conditionals: bool,
-  pub keep_used_scrutinees: bool,
   pub single_rhs: bool,
   pub irreducible_only: bool,
   // timeout
@@ -46,7 +43,6 @@ impl Config {
     Self {
       max_split_depth: args.max_split_depth,
       split_conditionals: !args.no_cond_split,
-      keep_used_scrutinees: args.keep_used_scrutinees,
       single_rhs: args.single_rhs,
       irreducible_only: args.irreducible_only,
       timeout: if args.timeout == 0 { None } else { Some(args.timeout) },
