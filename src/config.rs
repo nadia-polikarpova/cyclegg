@@ -23,6 +23,8 @@ pub struct Args {
   pub save_graphs: bool,
   #[clap(short = 'r', long = "save-results")]
   pub save_results: bool,
+  #[clap(short = 'e', long = "explain-results")]
+  pub explain_results: bool,
 }
 
 pub struct Config {
@@ -35,7 +37,8 @@ pub struct Config {
   // logging
   pub log_level: Level,
   pub save_graphs: bool,
-  pub save_results: bool
+  pub save_results: bool,
+  pub explain_results: bool,
 }
 
 impl Config {
@@ -48,7 +51,8 @@ impl Config {
       timeout: if args.timeout == 0 { None } else { Some(args.timeout) },
       log_level: args.log_level.parse().unwrap(),
       save_graphs: args.save_graphs,
-      save_results: args.save_results
+      save_results: args.save_results,
+      explain_results: args.explain_results,
     }
   }
 }

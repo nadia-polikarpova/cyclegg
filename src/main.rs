@@ -23,11 +23,15 @@ fn main() -> std::io::Result<()> {
     let (result, proof_state) = prove(goal);
     let duration = start.elapsed();
     println!("{} ({:.2} sec)", result, duration.as_secs_f32());
-    for (goal_name, mut explanation) in proof_state.solved_goal_explanations {
-      println!("{} {}", "Proved case".bright_blue(), goal_name);
-      println!("{}", explanation.get_flat_string());
+    if CONFIG.explain_results {
+      for (goal_name, mut explanation) in proof_state.solved_goal_explanations {
+        println!("{} {}", "Proved case".bright_blue(), goal_name);
+        println!("{}", explanation.get_flat_string());
+      }
+      for goal in proof_state.goals {
+        println!("{} {}", "Could not prove".red(), goal.name);
+      }
     }
-
     if let Some(ref mut file) = result_file {
       let line = format!("{},{:?},{}\n", goal_name, result, duration.as_secs_f32());
       file.write_all(line.as_bytes())?;
