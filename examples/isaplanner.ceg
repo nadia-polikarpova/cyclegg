@@ -1,0 +1,432 @@
+(
+(data Bool (True False))
+(:: True Bool)
+(:: False Bool)
+
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(data Pair (Pair))
+(:: Pair (-> (?a ?b) (Pair ?a ?b)))
+
+(data List (Nil Cons))
+(:: Nil  (List ?a)                    )
+(:: Cons (-> (?a (List ?a)) (List ?a)))
+
+(data Tree (Leaf Node))
+(:: Leaf (Tree ?a)                              )
+(:: Node (-> ((Tree ?a) ?a (Tree ?a)) (Tree ?a)))
+
+(data Tm (Var Cst App))
+(:: Var (-> (?a                 ) (Tm ?a)))
+(:: Cst (-> (Nat                ) (Tm ?a)))
+(:: App (-> ((Expr ?a) (Expr ?a)) (Tm ?a)))
+
+(data Expr (MkExpr))
+(:: MkExpr (-> ((Tm ?a) Nat) (Expr ?a)))
+
+(:: id (-> (?a) ?a))
+(=> (id ?x) ?x)
+
+(:: comp (-> ((-> ?b ?c) (-> ?a ?b) (?a)) ?c))
+(=> (comp ?f ?g ?x) ($ ?f ($ ?g ?x)))
+
+(:: const (-> (?a ?b) ?a))
+(=> (const ?x ?y) ?x)
+
+(:: ite (-> (Bool ?a ?a) ?a))
+(=> (ite True ?x ?y ) ?x)
+(=> (ite False ?x ?y) ?y)
+
+(:: not (-> (Bool) Bool))
+(=> (not True) False)
+(=> (not False) True)
+
+(:: and (-> (Bool Bool) Bool))
+(=> (and False ?y) False)
+(=> (and ?x False) False)
+(=> (and True True) True)
+
+(:: add (-> (Nat Nat) Nat))
+(=> (add Z      ?y) ?y             )
+(=> (add (S ?x) ?y) (S (add ?x ?y)))
+
+(:: sub (-> (Nat Nat) Nat))
+(=> (sub ?x Z)          ?x         )
+(=> (sub Z ?y)          Z          )
+(=> (sub (S ?x) (S ?y)) (sub ?x ?y))
+
+(:: leq (-> (Nat Nat) Bool))
+(=> (leq Z      ?y) True           )
+(=> (leq (S ?x) Z ) False          )
+(=> (leq (S ?x) (S ?y)) (leq ?x ?y))
+
+(:: lt (-> (Nat Nat) Bool))
+(=> (lt ?x     Z     ) False     )
+(=> (lt Z      (S ?y)) True      )
+(=> (lt (S ?x) (S ?y)) (lt ?x ?y))
+
+(:: eq (-> (Nat Nat) Bool))
+(=> (eq Z      Z     ) True      )
+(=> (eq Z      (S ?y)) False     )
+(=> (eq (S ?x) Z     ) False     )
+(=> (eq (S ?x) (S ?y)) (eq ?x ?y))
+
+(:: min (-> (Nat Nat) Nat))
+(=> (min Z      ?y    ) Z              )
+(=> (min ?x     Z     ) Z              )
+(=> (min (S ?x) (S ?y)) (S (min ?x ?y)))
+
+(:: max (-> (Nat Nat) Nat))
+(=> (max Z      ?y    ) ?y             )
+(=> (max ?x     Z     ) ?x             )
+(=> (max (S ?x) (S ?y)) (S (max ?x ?y)))
+
+(:: len (-> ((List ?a)) Nat))
+(=> (len Nil          ) Z            )
+(=> (len (Cons ?x ?xs)) (S (len ?xs)))
+
+(:: elem (-> (Nat (List Nat)) Bool))
+(=> (elem ?n Nil          ) False                            )
+(=> (elem ?n (Cons ?x ?xs)) (ite (eq n x) True (elem ?n ?xs)))
+
+(:: take (-> (Nat (List ?a)) (List ?a)))
+(=> (take Z      ?xs          ) Nil                    )
+(=> (take (S ?n) Nil          ) Nil                    )
+(=> (take (S ?n) (Cons ?x ?xs)) (Cons ?x (take ?n ?xs)))
+
+(:: drop (-> (Nat (List ?a)) (List ?a)))
+(=> (drop Z      ?xs          ) ?xs          )
+(=> (drop (S ?n) Nil          ) Nil          )
+(=> (drop (S ?n) (Cons ?x ?xs)) (drop ?n ?xs))
+
+(:: count (-> (Nat (List Nat)) Nat))
+(=> (count ?x Nil          ) Z)
+(=> (count ?x (Cons ?y ?ys)) (ite (eq ?x ?y) (S (count ?x ?ys)) (count ?x ?ys)))
+
+(:: append (-> ((List ?a) (List ?a)) (List ?a)))
+(=> (append Nil           ?ys) ?ys                       )
+(=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
+
+(:: last (-> ((List ?a)) ?a))
+(=> (last (Cons ?x Nil)          ) ?x                  )
+(=> (last (Cons ?x (Cons ?y ?ys))) (last (Cons ?y ?ys)))
+
+(:: lastOfTwo (-> ((List ?a) (List ?a)) ?a))
+(=> (lastOfTwo ?xs Nil          ) (last ?xs)          )
+(=> (lastOfTwo ?xs (Cons ?y ?ys)) (last (Cons ?y ?ys)))
+
+(:: butlast (-> ((List a)) (List a)))
+(=> (butlast Nil                    ) Nil                              )
+(=> (butlast (Cons ?x Nil)          ) Nil                              )
+(=> (butlast (Cons ?x (Cons ?y ?ys))) (Cons ?x (butlast (Cons ?y ?ys))))
+
+(:: butlastConcat (-> ((List a) (List a)) (List a)))
+(=> (butlastConcat ?xs Nil          ) (butlast ?xs)                       )
+(=> (butlastConcat ?xs (Cons ?y ?ys)) (append ?xs (butlast (Cons ?y ?ys))))
+
+(:: map (-> ((-> ?a ?b) (List ?a)) (List ?b)))
+(=> (map ?f Nil          ) Nil                          )
+(=> (map ?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
+
+(:: filter (-> (-> ?a Bool) (List ?a)) (List ?a))
+(=> (filter ?p Nil          ) Nil                                                     )
+(=> (filter ?p (Cons ?x ?xs)) (ite ($ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?xs)))
+
+(:: dropWhile (-> (-> ?a Bool) (List ?a)) (List ?a))
+(=> (dropWhile ?p Nil          ) Nil                                             )
+(=> (dropWhile ?p (Cons ?x ?xs)) (ite ($ ?p ?x) (dropWhile ?p ?xs) (Cons ?x ?xs)))
+
+(:: takeWhile (-> (-> ?a Bool) (List ?a)) (List ?a))
+(=> (takeWhile ?p Nil          ) Nil                                             )
+(=> (takeWhile ?p (Cons ?x ?xs)) (ite ($ ?p ?x) (Cons ?x (takeWhile ?p ?xs)) Nil))
+
+(:: delete (-> (Nat (List Nat)) (List Nat)))
+(=> (delete ?n Nil          ) Nil                                                       )
+(=> (delete ?n (Cons ?x ?xs)) (ite (eq ?n ?x) (delete ?n ?xs) (Cons ?x (delete ?n ?xs))))
+
+(:: ins (-> (Nat (List Nat)) (List Nat)))
+(=> (ins ?n Nil          ) (Cons ?n Nil)                                                  )
+(=> (ins ?n (Cons ?x ?xs)) (ite (lt ?n ?x) (Cons ?n (Cons ?x ?xs)) (Cons ?x (ins ?n ?xs))))
+
+(:: insort (-> (Nat (List Nat)) (List Nat)))
+(=> (insort ?n Nil          ) (Cons ?n Nil)                                                      )
+(=> (insort ?n (Cons ?x ?xs)) (ite (leq ?n ?x) (Cons ?n (Cons ?x ?xs)) (Cons ?x (insort ?n ?xs))))
+
+(:: ins1 (-> (Nat (List Nat)) (List Nat)))
+(=> (ins1 ?n Nil          ) (Cons ?n Nil)                                                   )
+(=> (ins1 ?n (Cons ?x ?xs)) (ite (eq ?n ?x) (Cons ?n (Cons ?x ?xs)) (Cons ?x (ins1 ?n ?xs))))
+
+(:: sort (-> ((List Nat)) (List Nat)))
+(=> (sort Nil          ) Nil                   )
+(=> (sort (Cons ?x ?xs)) (insort ?x (sort ?xs)))
+
+(:: sorted (-> ((List Nat)) Bool))
+(=> (sorted Nil                    ) True                                )
+(=> (sorted (Cons ?x Nil)          ) True                                )
+(=> (sorted (Cons ?x (Cons ?y ?ys))) (and (leq x y) (sorted (Cons y ys))))
+
+(:: zip (-> ((List ?a) (List ?b)) (List (Pair ?a ?b))))
+(=> (zip Nil           ?ys          ) Nil                              )
+(=> (zip ?xs           Nil          ) Nil                              )
+(=> (zip (Cons ?x ?xs) (Cons ?y ?ys)) (Cons (Pair ?x ?y) (zip ?xs ?ys)))
+
+(:: zipConcat (-> (?a (List ?a) (List ?b)) (List (Pair ?a ?b))))
+(=> (zipConcat ?x ?xs Nil          ) Nil)
+(=> (zipConcat ?x ?xs (Cons ?y ?ys)) (Cons (Pair ?x ?y) (zip ?xs ?ys)))
+
+(:: rev (-> ((List ?a)) (List ?a)))
+(=> (rev Nil          ) Nil                       )
+(=> (rev (Cons ?x ?xs)) (append ?xs (Cons ?x Nil)))
+
+(:: height (-> ((Tree ?a)) Nat))
+(=> (height Leaf           ) Z                                )
+(=> (height (Node ?l ?x ?r)) (S (max (height ?l) (height ?r))))
+
+(:: mirror (-> ((Tree ?a)) (Tree ?a)))
+(=> (mirror Leaf           ) Leaf                             )
+(=> (mirror (Node ?l ?x ?r)) (Node (mirror ?r) ?x (mirror ?l)))
+
+(:: mapE (-> ((-> ?a ?b) (Expr ?a)) (Expr ?b)))
+(=> (mapE ?f (MkExpr ?t ?n)) (MkExpr (mapT ?f ?t) ?n))
+
+(:: mapT (-> ((-> ?a ?b) (Tm ?a)) (Tm ?b)))
+(=> (mapT ?f (Var ?x)     ) (Var ($ ?f ?x))                  )
+(=> (mapT ?f (Cst ?n)     ) (Cst ?n)                         )
+(=> (mapT ?f (App ?e1 ?e2)) (App (mapE ?f ?e1) (mapE ?f ?e2)))
+
+(:: argsE (-> ((Expr ?a)) (List (Expr ?a))))
+(=> (argsE (MkExpr ?t ?n)) (argsT ?t))
+
+(:: argsT (-> ((Tm ?a)) (List (Expr ?a))))
+(=> (argsT (Var ?x)     ) Nil)
+(=> (argsT (Cst ?n)     ) Nil)
+(=> (argsT (App ?e1 ?e2)) (Cons ?e2 (argsE ?e1)))
+
+(:: headE (-> ((Expr ?a)) (Expr ?a)))
+(=> (headE (MkExpr (Var ?x) ?n)     ) (MkExpr (Var ?x) ?n))
+(=> (headE (MkExpr (Cst ?x) ?n)     ) (MkExpr (Cst ?x) ?n))
+(=> (headE (MkExpr (App ?e1 ?e2) ?n)) (headE ?e1)         )
+
+(=== prop_01 (n xs) (Nat (List a))
+  (append (take n xs) (drop n xs))
+  xs
+)
+
+(=== prop_06 (n m) (Nat Nat)
+  (sub n (add n m))
+  Z
+)
+
+(=== prop_07 (n m) (Nat Nat)
+  (sub (add n m) n)
+  m
+)
+
+(=== prop_08 (k m n) (Nat Nat Nat)
+  (sub (add k m) (add k n))
+  (sub m n)
+)
+
+(=== prop_09 (i j k) (Nat Nat Nat)
+  (sub (sub i j) k)
+  (sub i (add j k))
+)
+
+(=== prop_10 (m) (Nat)
+  (sub m m)
+  Z
+)
+
+(=== prop_11 (xs) ((List a))
+  (drop Z xs)
+  xs
+)
+
+(=== prop_12 (n f xs) (Nat (-> a b) (List a))
+  (drop n (map f xs))
+  (map f (drop n xs))
+)
+
+(=== prop_13 (n x xs) (Nat a (List a))
+  (drop (S n) (Cons x xs))
+  (drop n xs)
+)
+
+(=== prop_17 (n) (Nat)
+  (leq n Z)
+  (eq n Z)
+)
+
+(=== prop_18 (i m) (Nat Nat)
+  (lt i (S (add i m)))
+  True
+)
+
+(=== prop_19 (n xs) (Nat (List a))
+  (len (drop n xs))
+  (sub (len xs) n)
+)
+
+(=== prop_21 (n m) (Nat Nat)
+  (leq n (add n m))
+  True
+)
+
+(=== prop_22 (a b c) (Nat Nat Nat)
+  (max (max a b) c)
+  (max a (max b c))
+)
+
+(=== prop_23 (a b) (Nat Nat)
+  (max a b)
+  (max b a)
+)
+
+(=== prop_24 (a b) (Nat Nat)
+  (eq (max a b) a)
+  (leq b a)
+)
+
+(=== prop_25 (a b) (Nat Nat)
+  (eq (max a b) b)
+  (leq a b)
+)
+
+(=== prop_31 (a b c) (Nat Nat Nat)
+  (min (min a b) c)
+  (min a (min b c))
+)
+
+(=== prop_32 (a b) (Nat Nat)
+  (min a b)
+  (min b a)
+)
+
+(=== prop_33 (a b) (Nat Nat)
+  (eq (min a b) a)
+  (leq a b)
+)
+
+(=== prop_34 (a b) (Nat Nat)
+  (eq (min a b) b)
+  (leq b a)
+)
+
+(=== prop_35 (xs) ((List a))
+  (dropWhile ($ const False) xs)
+  xs
+)
+
+(=== prop_36 (xs) ((List a))
+  (takeWhile ($ const True) xs)
+  xs
+)
+
+(=== prop_40 (xs) (List a)
+  (take Z xs)
+  Nil
+)
+
+(=== prop_41 (n f xs) (Nat (-> a b) (List a))
+  (take n (map f xs))
+  (map f (take n xs))
+)
+
+(=== prop_42 (n x xs) (Nat a (List a))
+  (take (S n) (Cons x xs))
+  (Cons x (take n xs))
+)
+
+(=== prop_44 (x xs ys) (a (List a) (List a))
+  (zip (Cons x xs) ys)
+  (zipConcat x xs ys)
+)
+
+(=== prop_45 (x y xs ys) (a b (List a) (List b))
+  (zip (Cons x xs) (Cons y ys))
+  (Cons (Pair x y) (zip xs ys))
+)
+
+(=== prop_46 (xs) ((List a))
+  (zip Nil xs)
+  Nil
+)
+
+(=== prop_49 (xs ys) ((List a) (List a))
+  (butlast (append xs ys))
+  (butlastConcat xs ys)
+)
+
+(=== prop_50 (xs) ((List a))
+  (butlast xs)
+  (take (sub (len xs) (S Z)) xs)
+)
+
+(=== prop_51 (xs x) ((List a) a)
+  (butlast (append xs (Cons x Nil)))
+  xs
+)
+
+(=== prop_55 (n xs ys) (Nat (List a) (List a))
+  (drop n (append xs ys))
+  (append (drop n xs) (drop (sub n (len xs)) ys))
+)
+
+(=== prop_56 (n m xs) (Nat Nat (List a))
+  (drop n (drop m xs))
+  (drop (add n m) xs)
+)
+
+(=== prop_57 (n m xs) (Nat Nat (List a))
+  (drop n (take m xs))
+  (take (sub m n) (drop n xs))
+)
+
+(=== prop_58 (n xs ys) (Nat (List a) (List a))
+  (drop n (zip xs ys))
+  (zip (drop n xs) (drop n ys))
+)
+
+(=== prop_61 (xs ys) ((List a) (List a))
+  (last (append xs ys))
+  (lastOfTwo xs ys)
+)
+
+(=== prop_64 (x xs) (a (List a))
+  (last (append xs (Cons x Nil)))
+  x
+)
+
+(=== prop_67 (xs) ((List a))
+  (len (butlast xs))
+  (sub (len xs) (S Z))
+)
+
+(=== prop_79 (n m k) (Nat Nat Nat)
+  (sub (sub (S m) n) (S k))
+  (sub (sub m n) k)
+)
+
+(=== prop_80 (n xs ys) (Nat (List a) (List a))
+  (take n (append xs ys))
+  (append (take n xs) (take (sub n (len xs)) ys))
+)
+
+(=== prop_82 (n xs ys) (Nat (List a) (List a))
+  (take n (zip xs ys))
+  (zip (take n xs) (take n ys))
+)
+
+(=== prop_83 (xs ys zs) ((List a) (List a) (List a))
+  (zip (append xs ys) zs)
+  (append (zip xs (take (len xs) zs)) (zip ys (drop (len xs) zs)))
+)
+
+(=== prop_84 (xs ys zs) ((List a) (List a) (List a))
+  (zip xs (append ys zs))
+  (append (zip (take (len ys) xs) ys) (zip (drop (len ys) xs) zs))
+)
+
+)
