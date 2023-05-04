@@ -91,9 +91,9 @@ pub struct Goal {
   scrutinees: VecDeque<Symbol>,
   /// Our goal is to prove lhs == rhs
   pub lhs: Expr,
-  lhs_id: Id,
+  pub lhs_id: Id,
   pub rhs: Expr,
-  rhs_id: Id,
+  pub rhs_id: Id,
   /// Environment
   env: Env,
   /// Global context (i.e. constructors and top-level bindings)
