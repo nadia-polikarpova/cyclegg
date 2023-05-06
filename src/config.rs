@@ -25,6 +25,8 @@ pub struct Args {
   pub save_results: bool,
   #[clap(short = 'e', long = "explain-results")]
   pub explain_results: bool,
+  #[clap(short = 'v', long = "verbose")]
+  pub verbose: bool,
 }
 
 pub struct Config {
@@ -39,6 +41,7 @@ pub struct Config {
   pub save_graphs: bool,
   pub save_results: bool,
   pub explain_results: bool,
+  pub verbose: bool,
 }
 
 impl Config {
@@ -53,6 +56,7 @@ impl Config {
       save_graphs: args.save_graphs,
       save_results: args.save_results,
       explain_results: args.explain_results,
+      verbose: args.verbose,
     }
   }
 }

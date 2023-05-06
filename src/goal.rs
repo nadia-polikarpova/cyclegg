@@ -453,6 +453,34 @@ impl std::fmt::Display for Outcome {
   }
 }
 
+
+pub fn explain_goal_failure(goal: &Goal) {
+  println!("{} {}", "Could not prove".red(), goal.name);
+  println!("{}", "LHS Nodes".cyan());
+  let extractor = egg::Extractor::new(&goal.egraph, AstSize);
+  for lhs_node in goal.egraph[goal.lhs_id].nodes.iter() {
+    let child_rec_exprs: String = lhs_node.children.iter().map(|child_id|{
+      let (_, best_rec_expr) = extractor.find_best(*child_id);
+      best_rec_expr.to_string()
+    }).collect::<Vec<String>>().join(" ");
+    if child_rec_exprs.is_empty() {
+      println!("({})", lhs_node);
+    }
+    println!("({} {})", lhs_node, child_rec_exprs);
+  }
+  println!("{}", "RHS Nodes".cyan());
+  for rhs_node in goal.egraph[goal.rhs_id].nodes.iter() {
+    let child_rec_exprs: String = rhs_node.children.iter().map(|child_id|{
+      let (_, best_rec_expr) = extractor.find_best(*child_id);
+      best_rec_expr.to_string()
+    }).collect::<Vec<String>>().join(" ");
+    if child_rec_exprs.is_empty() {
+      println!("({})", rhs_node);
+    }
+    println!("({} {})", rhs_node, child_rec_exprs);
+  }
+}
+
 /// Top-level interface to the theorem prover.
 pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
   let mut state = ProofState { goals: vec![goal], solved_goal_explanations: vec![], start_time: Instant::now() };
@@ -470,23 +498,43 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
     if CONFIG.save_graphs {
       goal.save_egraph();
     }
-    if goal.explanation.is_some() {
+    if let Some(mut explanation) = goal.explanation {
        // This goal has been discharged, proceed to the next goal
-       state.solved_goal_explanations.push((goal.name, goal.explanation.unwrap()));
+       if CONFIG.verbose {
+         println!("{} {}", "Proved case".bright_blue(), goal.name);
+         println!("{}", explanation.get_flat_string());
+       }
+      state.solved_goal_explanations.push((goal.name, explanation));
       continue;
+    }
+    if CONFIG.verbose {
+      explain_goal_failure(&goal);
     }
     goal.split_ite();
     if goal.scrutinees.is_empty() {
       // This goal has no more variables to case-split on, 
       // so this goal, and hence the whole conjecture, is invalid
+      if CONFIG.verbose {
+        for remaining_goal in &state.goals {
+          println!("{} {}", "Remaining case".yellow(), remaining_goal.name);
+        }
+      }
       return (Outcome::Invalid, state);
     }
     if goal.scrutinees.front().unwrap() == &Symbol::from(BOUND_EXCEEDED) {
       // This goal could be further split, but we have reached the maximum depth,
       // we cannot prove or disprove the conjecture
+      if CONFIG.verbose {
+        for remaining_goal in &state.goals {
+          println!("{} {}", "Remaining case".yellow(), remaining_goal.name);
+        }
+      }
       return (Outcome::Unknown, state);
     }
     goal.case_split(&mut state);
+    if CONFIG.verbose {
+      println!("{}", "Case splitting and continuing...".purple());
+    }
   }
   // All goals have been discharged, so the conjecture is valid:
   (Outcome::Valid, state)
