@@ -65,12 +65,21 @@ impl Condition<SymbolLang, ()> for SmallerVar {
   }
 }
 
+fn rec_expr_to_pattern_ast<L: Clone>(rec_expr: RecExpr<L>) -> RecExpr<ENodeOrVar<L>> {
+  let enode_or_vars: Vec<ENodeOrVar<L>> = rec_expr.as_ref().into_iter()
+                                                           .cloned()
+                                                           .map(|node| ENodeOrVar::ENode(node))
+                                                           .collect();
+  enode_or_vars.into()
+}
+
 /// Proof goal
 pub struct Goal {
   /// Goal name
   pub name: String,
   /// Equivalences we already proved
   pub egraph: Eg,
+  pub explanation: Option<Explanation<SymbolLang>>,
   /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
   reductions: Vec<Rw>,
   lemmas: Vec<Rw>,
@@ -81,8 +90,10 @@ pub struct Goal {
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
   /// Our goal is to prove lhs == rhs
-  lhs_id: Id,
-  rhs_id: Id,
+  pub lhs: Expr,
+  pub lhs_id: Id,
+  pub rhs: Expr,
+  pub rhs_id: Id,
   /// Environment
   env: Env,
   /// Global context (i.e. constructors and top-level bindings)
@@ -100,7 +111,7 @@ impl Goal {
     global_context: &Context,
     reductions: &[Rw],    
   ) -> Self {
-    let mut egraph: Eg = Default::default();
+    let mut egraph: Eg = EGraph::default().with_explanations_enabled();
     egraph.add_expr(&lhs);
     egraph.add_expr(&rhs);
     egraph.rebuild();
@@ -110,11 +121,14 @@ impl Goal {
     let mut res = Self {
       name: name.to_string(),
       egraph,
+      explanation: None,
       reductions: reductions.to_vec(),
       lemmas: vec![],
       local_context: Context::new(),
       scrutinees: VecDeque::new(),
+      lhs: lhs.clone(),
       lhs_id,
+      rhs: rhs.clone(),
       rhs_id,
       env: env.clone(),
       global_context: global_context.clone(),
@@ -144,7 +158,10 @@ impl Goal {
   /// Saturate the goal by applying all available rewrites
   pub fn saturate(mut self) -> Self {
     let rewrites = self.reductions.iter().chain(self.lemmas.iter());
-    let runner = Runner::default().with_egraph(self.egraph).run(rewrites);
+    let mut runner = Runner::default().with_explanations_enabled().with_egraph(self.egraph).run(rewrites);
+    if runner.egraph.find(self.lhs_id) == runner.egraph.find(self.rhs_id) {
+      self.explanation = Some(runner.explain_equivalence(&self.lhs, &self.rhs))
+    }
     self.egraph = runner.egraph;
     self
   }
@@ -248,12 +265,12 @@ impl Goal {
         let symbols: Vec<Symbol> = self.egraph[guard_id].nodes.iter().map(|n| n.op).collect();
         // This guard is irreducible if symbols are disjoint from reducible
         if !reducible.clone().any(|s| symbols.contains(s)) {
-          irreducible_guards.insert(guard_id);
+          irreducible_guards.insert((guard_var, subst, guard_id));
         }
       }
     }
     // Iterate over all irreducible guard eclasses and add a new scrutinee to each
-    for guard_id in irreducible_guards {
+    for (guard_var, subst, guard_id) in irreducible_guards {
       let fresh_var = Symbol::from(format!("{}{}", GUARD_PREFIX, guard_id));
       // This is here only for logging purposes
       let expr = Extractor::new(&self.egraph, AstSize).find_best(guard_id).1;
@@ -262,8 +279,11 @@ impl Goal {
       // We are adding the new scrutinee to the front of the deque,
       // because we want to split conditions first, since they don't introduce new variables
       self.scrutinees.push_front(fresh_var);
+      let new_node = SymbolLang::leaf(fresh_var);
+      let new_pattern_ast = vec![ENodeOrVar::ENode(new_node.clone())].into();
       let new_id = self.egraph.add(SymbolLang::leaf(fresh_var));
-      self.egraph.union(guard_id, self.egraph.find(new_id));
+      let guard_var_pattern_ast = vec![ENodeOrVar::Var(guard_var)].into();
+      self.egraph.union_instantiations(&guard_var_pattern_ast, &new_pattern_ast, &subst, "add guard scrutinee");
     }
     self.egraph.rebuild();
   }
@@ -275,7 +295,10 @@ impl Goal {
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
     warn!("case-split on {}", var);
-    let var_id = self.egraph.lookup(SymbolLang::leaf(var)).unwrap();
+    let var_node = SymbolLang::leaf(var);
+    let var_rec_expr: RecExpr<SymbolLang> = vec!(var_node.clone()).into();
+    let var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec!(ENodeOrVar::ENode(var_node.clone())).into();
+    let var_id = self.egraph.lookup(var_node).unwrap();
     // Get the type of the variable, and then remove the variable
     let ty = self.local_context.get(&var).unwrap();
     // Convert to datatype name
@@ -288,11 +311,17 @@ impl Goal {
       let mut new_goal = Goal {
         name: format!("{}:", self.name),
         egraph: self.egraph.clone(),
+        // If we reach this point, I think we won't have an explanation
+        explanation: None,
         reductions: self.reductions.clone(),
         lemmas: self.lemmas.iter().chain(lemmas.iter()).cloned().collect(),
         local_context: self.local_context.clone(),
         scrutinees: self.scrutinees.clone(),
+        lhs: self.lhs.clone(),
+        // lhs: var_rec_expr.clone(),
         lhs_id: self.lhs_id,
+        // Putting a dummy value for now; We'll set this later once we create con_app.
+        rhs: self.rhs.clone(),
         rhs_id: self.rhs_id,
         env: self.env.clone(),
         global_context: self.global_context.clone(),
@@ -317,13 +346,15 @@ impl Goal {
       // Create an application of the constructor to the fresh vars
       let con_app_string = format!("({} {})", con, fresh_vars.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(" "));
       let con_app: Expr = con_app_string.parse().unwrap();
+      // new_goal.rhs = con_app.clone();
 
       new_goal.name = format!("{}{}={}", new_goal.name, var, con_app);
 
       // Add con_app to the new goal's egraph and union it with var
       new_goal.egraph.add_expr(&con_app);
       let con_app_id = new_goal.egraph.lookup_expr(&con_app).unwrap();
-      new_goal.egraph.union(var_id, con_app_id);
+      // Not sure if it's proper to use new_goal.name here
+      new_goal.egraph.union_instantiations(&var_pattern_ast.clone(), &rec_expr_to_pattern_ast(con_app), &Subst::default(), new_goal.name.clone());
       new_goal.egraph.rebuild();
 
       // Remove old variable from the egraph and context
@@ -385,8 +416,9 @@ impl Goal {
 /// A proof state is a list of subgoals,
 /// all of which have to be discharged
 pub struct ProofState {
-  goals: Vec<Goal>,
-  start_time: Instant,
+  pub goals: Vec<Goal>,
+  pub solved_goal_explanations: Vec<(String, Explanation<SymbolLang>)>,
+  pub start_time: Instant,
 }
 
 impl ProofState {
@@ -421,12 +453,40 @@ impl std::fmt::Display for Outcome {
   }
 }
 
+
+pub fn explain_goal_failure(goal: &Goal) {
+  println!("{} {}", "Could not prove".red(), goal.name);
+  println!("{}", "LHS Nodes".cyan());
+  let extractor = egg::Extractor::new(&goal.egraph, AstSize);
+  for lhs_node in goal.egraph[goal.lhs_id].nodes.iter() {
+    let child_rec_exprs: String = lhs_node.children.iter().map(|child_id|{
+      let (_, best_rec_expr) = extractor.find_best(*child_id);
+      best_rec_expr.to_string()
+    }).collect::<Vec<String>>().join(" ");
+    if child_rec_exprs.is_empty() {
+      println!("({})", lhs_node);
+    }
+    println!("({} {})", lhs_node, child_rec_exprs);
+  }
+  println!("{}", "RHS Nodes".cyan());
+  for rhs_node in goal.egraph[goal.rhs_id].nodes.iter() {
+    let child_rec_exprs: String = rhs_node.children.iter().map(|child_id|{
+      let (_, best_rec_expr) = extractor.find_best(*child_id);
+      best_rec_expr.to_string()
+    }).collect::<Vec<String>>().join(" ");
+    if child_rec_exprs.is_empty() {
+      println!("({})", rhs_node);
+    }
+    println!("({} {})", rhs_node, child_rec_exprs);
+  }
+}
+
 /// Top-level interface to the theorem prover.
-pub fn prove(mut goal: Goal) -> Outcome {  
-  let mut state = ProofState { goals: vec![goal], start_time: Instant::now() };
+pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
+  let mut state = ProofState { goals: vec![goal], solved_goal_explanations: vec![], start_time: Instant::now() };
   while !state.goals.is_empty() {
     if state.timeout() {
-      return Outcome::Timeout;
+      return (Outcome::Timeout, state);
     }
 
     // TODO: This should be info! but I don't know how to suppress all the info output from egg
@@ -438,23 +498,44 @@ pub fn prove(mut goal: Goal) -> Outcome {
     if CONFIG.save_graphs {
       goal.save_egraph();
     }
-    if goal.done() { 
+    if let Some(mut explanation) = goal.explanation {
        // This goal has been discharged, proceed to the next goal
+       if CONFIG.verbose {
+         println!("{} {}", "Proved case".bright_blue(), goal.name);
+         println!("{}", explanation.get_flat_string());
+       }
+      state.solved_goal_explanations.push((goal.name, explanation));
       continue;
+    }
+    if CONFIG.verbose {
+      explain_goal_failure(&goal);
     }
     goal.split_ite();
     if goal.scrutinees.is_empty() {
       // This goal has no more variables to case-split on, 
       // so this goal, and hence the whole conjecture, is invalid
-      return Outcome::Invalid;
+      if CONFIG.verbose {
+        for remaining_goal in &state.goals {
+          println!("{} {}", "Remaining case".yellow(), remaining_goal.name);
+        }
+      }
+      return (Outcome::Invalid, state);
     }
     if goal.scrutinees.front().unwrap() == &Symbol::from(BOUND_EXCEEDED) {
       // This goal could be further split, but we have reached the maximum depth,
       // we cannot prove or disprove the conjecture
-      return Outcome::Unknown;
+      if CONFIG.verbose {
+        for remaining_goal in &state.goals {
+          println!("{} {}", "Remaining case".yellow(), remaining_goal.name);
+        }
+      }
+      return (Outcome::Unknown, state);
     }
     goal.case_split(&mut state);
+    if CONFIG.verbose {
+      println!("{}", "Case splitting and continuing...".purple());
+    }
   }
   // All goals have been discharged, so the conjecture is valid:
-  Outcome::Valid
+  (Outcome::Valid, state)
 }

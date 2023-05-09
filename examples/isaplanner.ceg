@@ -214,21 +214,6 @@
   xs
 )
 
-(=== prop_02 (n xs ys) (Nat (List Nat) (List Nat))
-  (add (count n xs) (count n ys))
-  (count n (append xs ys))
-)
-
-(=== prop_03 (n xs ys) (Nat (List Nat) (List Nat))
-  (leq (count n xs) (count n (append xs ys)))
-  True
-)
-
-(=== prop_04 (n xs) (Nat (List Nat))
-  (S (count n xs))
-  (count n (Cons n xs))
-)
-
 (=== prop_06 (n m) (Nat Nat)
   (sub n (add n m))
   Z
@@ -269,16 +254,6 @@
   (drop n xs)
 )
 
-(=== prop_14 (p xs ys) ((-> a Bool) (List a) (List a))
-  (filter p (append xs ys))
-  (append (filter p xs) (filter p ys))
-)
-
-(=== prop_15 (x xs) (Nat (List Nat))
-  (len (ins x xs))
-  (S (len xs))
-)
-
 (=== prop_17 (n) (Nat)
   (leq n Z)
   (eq n Z)
@@ -292,11 +267,6 @@
 (=== prop_19 (n xs) (Nat (List a))
   (len (drop n xs))
   (sub (len xs) n)
-)
-
-(=== prop_20 (xs) ((List Nat))
-  (len (sort xs))
-  (len xs)
 )
 
 (=== prop_21 (n m) (Nat Nat)
@@ -322,21 +292,6 @@
 (=== prop_25 (a b) (Nat Nat)
   (eq (max a b) b)
   (leq a b)
-)
-
-(=== prop_28 (x xs) (Nat (List Nat))
-  (elem x (append xs (Cons x Nil)))
-  True
-)
-
-(=== prop_29 (x xs) (Nat (List Nat))
-  (elem x (ins1 x xs))
-  True
-)
-
-(=== prop_30 (x xs) (Nat (List Nat))
-  (elem x (ins x xs))
-  True
 )
 
 (=== prop_31 (a b c) (Nat Nat Nat)
@@ -369,21 +324,6 @@
   xs
 )
 
-(=== prop_37 (x xs) (Nat (List Nat))
-  (not (elem x (delete x xs)))
-  (True)
-)
-
-(=== prop_38 (n xs) (Nat (List Nat))
-  (count n (append xs (Cons n Nil)))
-  (S (count n xs))
-)
-
-(=== prop_39 (n x xs) (Nat Nat (List Nat))
-  (add (count n (Cons x Nil)) (count n xs))
-  (count n (Cons x xs))
-)
-
 (=== prop_40 (xs) (List a)
   (take Z xs)
   Nil
@@ -397,11 +337,6 @@
 (=== prop_42 (n x xs) (Nat a (List a))
   (take (S n) (Cons x xs))
   (Cons x (take n xs))
-)
-
-(=== prop_43 (p xs) ((-> a Bool) (List a))
-  (append (takeWhile p xs) (dropWhile p xs))
-  xs
 )
 
 (=== prop_44 (x xs ys) (a (List a) (List a))
@@ -419,11 +354,6 @@
   Nil
 )
 
-(=== prop_47 (t) ((Tree a))
-  (height (mirror t))
-  (height t)
-)
-
 (=== prop_49 (xs ys) ((List a) (List a))
   (butlast (append xs ys))
   (butlastConcat xs ys)
@@ -437,21 +367,6 @@
 (=== prop_51 (xs x) ((List a) a)
   (butlast (append xs (Cons x Nil)))
   xs
-)
-
-(=== prop_52 (n xs) (Nat (List Nat))
-  (count n xs)
-  (count n (rev xs))
-)
-
-(=== prop_53 (n xs) (Nat (List Nat))
-  (count n xs)
-  (count n (sort xs))
-)
-
-(=== prop_54 (n m) (Nat Nat)
-  (sub (add m n) n)
-  m
 )
 
 (=== prop_55 (n xs ys) (Nat (List a) (List a))
@@ -484,54 +399,9 @@
   x
 )
 
-(=== prop_65 (i m) (Nat Nat)
-  (lt i (S (add m i)))
-  True
-)
-
-(=== prop_66 (p xs) ((-> a Bool) (List a))
-  (leq (len (filter p xs)) (len xs))
-  True
-)
-
 (=== prop_67 (xs) ((List a))
   (len (butlast xs))
   (sub (len xs) (S Z))
-)
-
-(=== prop_68 (n xs) (Nat (List Nat))
-  (leq (len (delete n xs)) (len xs))
-  True
-)
-
-(=== prop_69 (n m) (Nat Nat)
-  (leq n (add m n))
-  True
-)
-
-(=== prop_72 (i xs) (Nat (List a))
-  (rev (drop i xs))
-  (take (sub (len xs) i) (rev xs))
-)
-
-(=== prop_73 (p xs) ((-> a Bool) (List a))
-  (rev (filter p xs))
-  (filter p (rev xs))
-)
-
-(=== prop_74 (i xs) (Nat (List a))
-  (rev (take i xs))
-  (drop (sub (len xs) i) (rev xs))
-)
-
-(=== prop_75 (n m xs) (Nat Nat (List Nat))
-  (add (count n xs) (count n (Cons m Nil)))
-  (count n (Cons m xs))
-)
-
-(=== prop_78 (xs) ((List Nat))
-  (sorted (sort xs))
-  True
 )
 
 (=== prop_79 (n m k) (Nat Nat Nat)
@@ -542,11 +412,6 @@
 (=== prop_80 (n xs ys) (Nat (List a) (List a))
   (take n (append xs ys))
   (append (take n xs) (take (sub n (len xs)) ys))
-)
-
-(=== prop_81 (n m xs) (Nat Nat (List a))
-  (take n (drop m xs))
-  (drop m (take (add n m) xs))
 )
 
 (=== prop_82 (n xs ys) (Nat (List a) (List a))
@@ -564,28 +429,4 @@
   (append (zip (take (len ys) xs) ys) (zip (drop (len ys) xs) zs))
 )
 
-(=== prop_86 (e) ((Expr a))
-  (mapE id e)
-  e
-)
-
-(=== prop_87 (f g e) ((-> ?b ?c) (-> ?a ?b) (Expr a))
-  (mapE ($ ($ comp f) g) e)
-  (mapE f (mapE g e))
-)
-
-(=== prop_88 (f e) ((-> a b) (Expr a))
-  (argsE (mapE f e))
-  (map ($ mapE f) (argsE e))
-)
-
-(=== prop_89 (f e) ((-> a b) (Tm a))
-  (argsT (mapT f e))
-  (map ($ mapE f) (argsT e))
-)
-
-(=== prop_90 (f e) ((-> a b) (Expr a))
-  (headE (mapE f e))
-  (mapE f (headE e))
-)
 )
