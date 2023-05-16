@@ -2,10 +2,8 @@ use std::{collections::HashSet};
 use symbolic_expressions::*;
 use egg::{*};
 
-#[path = "./ast.rs"] pub mod ast;
-#[path = "./config.rs"] pub mod config;
-#[path = "./goal.rs"] pub mod goal;
-use goal::{*, ast::*};
+use crate::ast::*;
+use crate::goal::{*};
 
 #[derive(Default)]
 struct ParserState {

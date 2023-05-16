@@ -1,15 +1,13 @@
-use std::{collections::{VecDeque, HashSet}};
+use std::collections::{VecDeque, HashSet, HashMap};
 use egg::{*};
 use log::{warn};
 use colored::Colorize;
+use symbolic_expressions::Sexp;
 use std::time::{Instant, Duration};
 
-#[path = "./ast.rs"] pub mod ast;
-#[path = "./egraph.rs"] pub mod egraph;
-#[path = "./config.rs"] pub mod config;
-use ast::{*};
-use egraph::{*};
-use config::{*};
+use crate::ast::{*};
+use crate::egraph::{*};
+use crate::config::{*};
 
 // We will use SymbolLang with no analysis for now
 pub type Eg = EGraph<SymbolLang, ()>;
@@ -85,7 +83,13 @@ pub struct Goal {
   lemmas: Vec<Rw>,
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
-  local_context: Context,
+  pub local_context: Context,
+  // /// The top-level universally-quanitifed variables used as the arugments for
+  // /// the proof: these are the roots of ty_splits
+  // pub top_level_variables: Vec<Symbol>,
+  // /// Map from a variable to its split (right now we only track data constructor
+  // /// splits)
+  // pub ty_splits: HashMap<Symbol, Sexp>,
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
@@ -305,6 +309,8 @@ impl Goal {
     let dt = Symbol::from(ty.datatype().unwrap());
     // Get the constructors of the datatype
     let cons = self.env.get(&dt).unwrap();
+    // We will add this to state.proof to describe the case split.
+    let mut instantiated_cons_and_goals: Vec<(String, String)> = vec!();
     // For each constructor, create a new goal and push it onto the proof state
     // (we process constructors in reverse order so that base case ends up at the top of the stack)
     for &con in cons.iter().rev() {
@@ -333,7 +339,7 @@ impl Goal {
       // For each argument: create a fresh variable and add it to the context and to scrutinees
       let mut fresh_vars = vec![];
       for i in 0..con_args.len() {
-        let fresh_var_name = format!("{}-{}{}", var, self.egraph.total_size(), i);        
+        let fresh_var_name = format!("{}_{}{}", var, self.egraph.total_size(), i);
         let depth = var_depth(&fresh_var_name[..]);
         let fresh_var = Symbol::from(fresh_var_name);        
         fresh_vars.push(fresh_var);
@@ -350,6 +356,8 @@ impl Goal {
 
       new_goal.name = format!("{}{}={}", new_goal.name, var, con_app);
 
+      instantiated_cons_and_goals.push((con_app_string, new_goal.name.clone()));
+
       // Add con_app to the new goal's egraph and union it with var
       new_goal.egraph.add_expr(&con_app);
       let con_app_id = new_goal.egraph.lookup_expr(&con_app).unwrap();
@@ -364,6 +372,8 @@ impl Goal {
       // Add the subgoal to the proof state
       state.goals.push(new_goal);
     }
+    // We split on var into the various instantiated constructors and subgoals.
+    state.proof.insert(self.name, ProofTerm::CaseSplit(var.to_string(), instantiated_cons_and_goals));
   }
 
   /// Save e-graph to file
@@ -413,11 +423,36 @@ impl Goal {
   }
 }
 
+#[derive(Clone, Debug)]
+pub enum ProofTerm {
+  /// - Arg0: Name of the variable we split on
+  /// - Arg1: List of cases we split on
+  ///   * Arg0: Sexp we split to
+  ///   * Arg1: Name of goal from this split
+  ///
+  /// Example:
+  /// ```
+  /// CaseSplit("x", [("(Z)", "goal_1"), ("(S x')","goal_2")])
+  /// ```
+  /// corresponds to the proof
+  /// ```
+  /// case x of
+  ///   Z    -> goal_1
+  ///   S x' -> goal_2
+  /// ```
+  CaseSplit(String, Vec<(String, String)>),
+  // TODO: ITE splitting (probably can just get away with having a node like
+  // ITEIntro(String, Sexp, String) which we can implement as a let, e.g.
+  //   let g = x <= y in ...
+  // where ... corresponds to the CaseSplit goal identified by the last String.
+}
+
 /// A proof state is a list of subgoals,
 /// all of which have to be discharged
 pub struct ProofState {
   pub goals: Vec<Goal>,
-  pub solved_goal_explanations: Vec<(String, Explanation<SymbolLang>)>,
+  pub solved_goal_explanations: HashMap<String, Explanation<SymbolLang>>,
+  pub proof: HashMap<String, ProofTerm>,
   pub start_time: Instant,
 }
 
@@ -483,7 +518,7 @@ pub fn explain_goal_failure(goal: &Goal) {
 
 /// Top-level interface to the theorem prover.
 pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
-  let mut state = ProofState { goals: vec![goal], solved_goal_explanations: vec![], start_time: Instant::now() };
+  let mut state = ProofState { goals: vec![goal], solved_goal_explanations: HashMap::default(), proof: HashMap::default(), start_time: Instant::now() };
   while !state.goals.is_empty() {
     if state.timeout() {
       return (Outcome::Timeout, state);
@@ -504,7 +539,7 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
          println!("{} {}", "Proved case".bright_blue(), goal.name);
          println!("{}", explanation.get_flat_string());
        }
-      state.solved_goal_explanations.push((goal.name, explanation));
+      state.solved_goal_explanations.insert(goal.name, explanation);
       continue;
     }
     if CONFIG.verbose {

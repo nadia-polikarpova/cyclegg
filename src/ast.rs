@@ -3,8 +3,8 @@ use std::{str::FromStr, fmt::Display, collections::HashMap};
 use egg::{*};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Type { 
-  repr: Sexp
+pub struct Type {
+  pub repr: Sexp
 }
 
 impl Type {

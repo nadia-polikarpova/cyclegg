@@ -1,9 +1,18 @@
 use std::time::Instant;
 use std::fs::*;
 use std::io::Write;
-pub mod parser;
-use parser::{*, config::{CONFIG, ARGS}};
 use colored::Colorize;
+
+pub mod ast;
+pub mod parser;
+pub mod goal;
+pub mod config;
+pub mod egraph;
+pub mod explain;
+
+use parser::{*};
+use config::{CONFIG, ARGS};
+use explain::explain_top;
 
 fn main() -> std::io::Result<()> {
   simple_logger::init_with_level(CONFIG.log_level).unwrap();
@@ -18,20 +27,24 @@ fn main() -> std::io::Result<()> {
 
   for goal in goals {
     let goal_name = goal.name.clone();
+    let goal_vars = goal.local_context.clone();
     let goal_lhs = goal.lhs.clone();
     let goal_rhs = goal.rhs.clone();
     println!("{} {}: {} = {}", "Proving begin".blue(), goal_name.blue(), goal_lhs, goal_rhs);
     let start = Instant::now();
-    let (result, proof_state) = goal::prove(goal);
+    let (result, mut proof_state) = goal::prove(goal);
     let duration = start.elapsed();
     if CONFIG.verbose {
       println!("{} {}: {} = {}", "Proving end".blue(), goal_name.blue(), goal_lhs, goal_rhs);
     }
     println!("{} = {} ({:.2} sec)", goal_name.blue(), result, duration.as_secs_f32());
     if CONFIG.explain_results && !CONFIG.verbose {
-      for (goal_name, mut explanation) in proof_state.solved_goal_explanations {
-        println!("{} {}", "Proved case".bright_blue(), goal_name);
-        println!("{}", explanation.get_flat_string());
+      // for (goal_name, mut explanation) in proof_state.solved_goal_explanations {
+      //   println!("{} {}", "Proved case".bright_blue(), goal_name);
+      //   println!("{}", explanation.get_flat_string());
+      // }
+      if let goal::Outcome::Valid = result {
+        println!("{}", explain_top(goal_name.clone(), &mut proof_state, goal_lhs, goal_rhs, goal_vars));
       }
     }
     if let Some(ref mut file) = result_file {
