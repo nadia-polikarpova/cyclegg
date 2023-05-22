@@ -69,4 +69,10 @@
   (map id xs)
   xs
 )
+
+(=== addComm (n m) (Nat Nat)
+  (add n m)
+  (add m n)
+)
+
 )

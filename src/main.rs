@@ -25,23 +25,28 @@ fn main() -> std::io::Result<()> {
     None
   };
 
-  for goal in goals {
+  for mut goal in goals {
     let goal_name = goal.name.clone();
     let goal_vars = goal.local_context.clone();
     let goal_lhs = goal.lhs.clone();
     let goal_rhs = goal.rhs.clone();
     println!("{} {}: {} = {}", "Proving begin".blue(), goal_name.blue(), goal_lhs, goal_rhs);
     let start = Instant::now();
-    let (result, mut proof_state) = goal::prove(goal);
+    let (result, mut proof_state) = goal::prove(goal.clone(), true);
+    goal.name = format!("{}_no_cyclic", goal_name);
+    // let (result_without_cyclic, _proof_state_without_cyclic) = goal::prove(goal.clone(), false);
     let duration = start.elapsed();
     if CONFIG.verbose {
       println!("{} {}: {} = {}", "Proving end".blue(), goal_name.blue(), goal_lhs, goal_rhs);
     }
+    // if result != result_without_cyclic {
+    //   println!("{}: with cyclic {}, without cyclic {} ", "Differing results".red(), result, result_without_cyclic);
+    // }
     println!("{} = {} ({:.2} sec)", goal_name.blue(), result, duration.as_secs_f32());
     if CONFIG.explain_results && !CONFIG.verbose {
-      // for (goal_name, mut explanation) in proof_state.solved_goal_explanations {
+      // for (goal_name, explanation) in &proof_state.solved_goal_explanations {
       //   println!("{} {}", "Proved case".bright_blue(), goal_name);
-      //   println!("{}", explanation.get_flat_string());
+      //   println!("{}", explanation.get_string());
       // }
       if let goal::Outcome::Valid = result {
         println!("{}", explain_top(goal_name.clone(), &mut proof_state, goal_lhs, goal_rhs, goal_vars));

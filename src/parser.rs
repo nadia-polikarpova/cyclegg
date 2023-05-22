@@ -128,6 +128,17 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let rw = Rewrite::new(lhs, searcher, applier).unwrap();
         state.rules.push(rw);
       }
+      "<=>" => {
+        // This is a rule: parse lhs and rhs:
+        let lhs = decl.list()?[1].to_string();
+        let rhs = decl.list()?[2].to_string();
+        let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
+        let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
+        let rw = Rewrite::new(lhs.clone(), searcher.clone(), applier.clone()).unwrap();
+        state.rules.push(rw);
+        let rw = Rewrite::new(rhs.clone(), applier.clone(), searcher.clone()).unwrap();
+        state.rules.push(rw);
+      }
       "===" => {
         // This is a goal: parse name, parameter names, parameter types, lhs, and rhs:
         let name = decl.list()?[1].string()?;

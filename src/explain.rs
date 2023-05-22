@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::ast::{Type, Expr};
 use crate::goal::{ProofState, ProofTerm};
+use crate::config::CONFIG;
 
 /// Constants from (Liquid)Haskell
 const EQUALS: &str = "=";
@@ -16,11 +17,14 @@ const PROOF: &str = "Proof";
 
 const LH_TYPE_BEGIN: &str = "{-@";
 const LH_TYPE_END: &str = "@-}";
+const COMMENT: &str = "--";
 const HAS_TYPE: &str = "::";
 
 /// Constants from cyclegg
 const APPLY: &str = "$";
 const ARROW: &str = "->";
+const FORWARD_ARROW: &str = "=>";
+const BACKWARD_ARROW: &str = "<=";
 
 /// A rewrite can be forward or backward, this specifies which direction it
 /// goes.
@@ -117,6 +121,15 @@ fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>) -> Stri
     // Render each of the terms in the explanation
     let flat_strings: Vec<String> = flat_terms.into_iter().map(|flat_term| {
         let mut str = String::new();
+        if CONFIG.verbose_proofs {
+            if let Some(rule_name) = &extract_rule_name(flat_term) {
+                add_indentation(&mut str, depth);
+                str.push_str(COMMENT);
+                str.push(' ');
+                str.push_str(&rule_name);
+                str.push('\n')
+            }
+        }
         add_indentation(&mut str, depth);
         str.push_str(&flat_term_to_sexp(flat_term).to_string());
         str
@@ -159,6 +172,13 @@ fn flat_term_to_sexp(flat_term: &FlatTerm<SymbolLang>) -> Sexp {
     }
 }
 
+fn extract_rule_name(flat_term: &FlatTerm<SymbolLang>) -> Option<String> {
+    let forward = flat_term.forward_rule.map(|rule| rule.to_string() + " " + FORWARD_ARROW);
+    let backward = flat_term.backward_rule.map(|rule| BACKWARD_ARROW.to_string() + " " + &rule.to_string());
+    let rule_from_child = flat_term.children.iter().map(extract_rule_name).collect();
+    forward.or(backward).or(rule_from_child)
+}
+
 fn convert_op(op: Symbol) -> Sexp {
     let op_str = op.to_string();
     // Special case for converting `$`, which is used internally in cyclegg for
@@ -197,3 +217,19 @@ fn convert_ty(ty: Sexp) -> String {
         Sexp::Empty => String::new(),
     }
 }
+
+// TODO: Lemma generation.
+// How to do lemmas:
+// 1.
+// 2. Anti-unficiation between terms to figure out:
+//   1. What lemma was used?
+//   2. What were its arguments? Specifically, for each variable
+//      used in the lemma x, what term t is x mapped to in this invocation?
+// 3. (If the lemma is the base induction hypothesis, simply call
+//    it. -- this is probably unnecessary and is generalized by the following method).
+//    Otherwise, look up the explanation for how its LHS relates to the goal
+//    LHS and its RHS relates to the goal RHS. Use the argument map to instantiate
+//    the explanations with concrete arguments. Inline the lemma as follows:
+//    (LHS ==. proof of LHS -> goal LHS ? inductionHypothesis ==. proof of goal RHS -> RHS ==. RHS)
+//    it might require some thinking to determine the relationship between the lemma's arguments
+//    and the arguments to the induction hypothesis.

@@ -1,6 +1,6 @@
 use std::collections::{VecDeque, HashSet, HashMap};
 use egg::{*};
-use log::{warn};
+use log::{warn, error};
 use colored::Colorize;
 use symbolic_expressions::Sexp;
 use std::time::{Instant, Duration};
@@ -17,6 +17,7 @@ pub type Rw = Rewrite<SymbolLang, ()>;
 const BOUND_EXCEEDED: &str = "__";
 
 /// Condition that checks whether the substitution is into a smaller tuple of variable
+#[derive(Clone)]
 struct SmallerVar(Vec<Symbol>);
 impl SmallerVar {
   /// Substitution as a string, for debugging purposes
@@ -38,12 +39,18 @@ impl SmallerVar {
       if is_descendant(&expr_name, &var_name) {
         // Target is strictly smaller than source
         has_strictly_smaller = true;
+      // } else if expr_name == "Z" {
+      //   // pass
+      // } else if var_name == "n" && expr_name == "(S n_40)" {
+      //   // pass
       } else if expr_name != var_name {
         // Target is neither strictly smaller nor equal to source
+        warn!("cannot apply lemma with subst [{}]", info);
         return false;
       }
     }
     if has_strictly_smaller { warn!("applying lemma with subst [{}]", info); }
+    else { warn!("cannot apply lemma with subst [{}]", info); }
     has_strictly_smaller
   }
 }
@@ -80,7 +87,7 @@ pub struct Goal {
   pub explanation: Option<Explanation<SymbolLang>>,
   /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
   reductions: Vec<Rw>,
-  lemmas: Vec<Rw>,
+  pub lemmas: Vec<Rw>,
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
@@ -144,6 +151,27 @@ impl Goal {
     res
   }
 
+  pub fn clone(&self) -> Self {
+      Goal {
+        name: self.name.clone(),
+        egraph: self.egraph.clone(),
+        // If we reach this point, I think we won't have an explanation
+        explanation: None,
+        reductions: self.reductions.clone(),
+        lemmas: self.lemmas.iter().chain(self.lemmas.iter()).cloned().collect(),
+        local_context: self.local_context.clone(),
+        scrutinees: self.scrutinees.clone(),
+        lhs: self.lhs.clone(),
+        // lhs: var_rec_expr.clone(),
+        lhs_id: self.lhs_id,
+        // Putting a dummy value for now; We'll set this later once we create con_app.
+        rhs: self.rhs.clone(),
+        rhs_id: self.rhs_id,
+        env: self.env.clone(),
+        global_context: self.global_context.clone(),
+      }
+  }
+
   pub fn get_lhs(&self) -> Expr {
     let extractor = Extractor::new(&self.egraph, AstSize);
     extractor.find_best(self.lhs_id).1
@@ -186,14 +214,18 @@ impl Goal {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
-  fn mk_lemma_rewrites(&self, state: &ProofState) -> Vec<Rw> {
+  fn mk_lemma_rewrites(&mut self, state: &ProofState) -> Vec<Rw> {
     let lhs_id = self.egraph.find(self.lhs_id);
     let rhs_id = self.egraph.find(self.rhs_id);
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
     let is_var = |v| self.local_context.contains_key(v);
 
     let mut rewrites = vec![];
+    for rhs_expr in exprs.get(&rhs_id).unwrap() {
+      warn!("equivalence for lemma rhs {} and goal rhs: {}", rhs_expr, self.egraph.explain_equivalence(rhs_expr, &self.rhs).get_flat_string());
+    }
     for lhs_expr in exprs.get(&lhs_id).unwrap() {
+      warn!("equivalence for lemma lhs {} and goal lhs: {}", lhs_expr, self.egraph.explain_equivalence(lhs_expr, &self.lhs).get_flat_string());
       let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
       if (CONFIG.irreducible_only && self.is_reducible(lhs_expr)) || has_guard_wildcards(&lhs) {
         continue;
@@ -205,15 +237,20 @@ impl Goal {
           continue;
         }
         let condition = SmallerVar(self.scrutinees.iter().cloned().collect());
+        let mut added_lemma = false;
         if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
           // if rhs has no extra wildcards, create a lemma lhs => rhs
-          self.add_lemma(lhs.clone(), rhs, condition, &mut rewrites);
-          if CONFIG.single_rhs { break };
-        } else if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
+          self.add_lemma(lhs.clone(), rhs.clone(), condition.clone(), &mut rewrites);
+          added_lemma = true;
+          if CONFIG.single_rhs { continue };
+        }
+        if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
           // if lhs has no extra wildcards, create a lemma rhs => lhs
-          self.add_lemma(rhs, lhs.clone(), condition, &mut rewrites);
-          if CONFIG.single_rhs { break };
-        } else {
+          self.add_lemma(rhs.clone(), lhs.clone(), condition, &mut rewrites);
+          added_lemma = true;
+          if CONFIG.single_rhs { continue };
+        }
+        if !added_lemma {
           warn!("cannot create a lemma from {} and {}", lhs, rhs);
         }
       }
@@ -293,8 +330,13 @@ impl Goal {
   }
 
   /// Consume this goal and add its case splits to the proof state
-  fn case_split(mut self, state: &mut ProofState) {
-    let lemmas = self.mk_lemma_rewrites(state);    
+  fn case_split(mut self, state: &mut ProofState, mk_lemmas: bool) {
+    let lemmas = self.mk_lemma_rewrites(state);
+    if mk_lemmas {
+      for lemma in &lemmas {
+        warn!("Creating lemma {}", lemma.name);
+      }
+    }
 
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
@@ -320,7 +362,11 @@ impl Goal {
         // If we reach this point, I think we won't have an explanation
         explanation: None,
         reductions: self.reductions.clone(),
-        lemmas: self.lemmas.iter().chain(lemmas.iter()).cloned().collect(),
+        lemmas: if mk_lemmas {
+          self.lemmas.iter().chain(lemmas.iter()).cloned().collect()
+        } else {
+          self.lemmas.clone()
+        },
         local_context: self.local_context.clone(),
         scrutinees: self.scrutinees.clone(),
         lhs: self.lhs.clone(),
@@ -469,7 +515,7 @@ pub fn pretty_state(state: &ProofState) -> String {
 }
 
 /// Outcome of a proof attempt
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub enum Outcome {
   Valid,
   Invalid,
@@ -517,7 +563,8 @@ pub fn explain_goal_failure(goal: &Goal) {
 }
 
 /// Top-level interface to the theorem prover.
-pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
+pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) {
+  let initial_goal_name = goal.name.clone();
   let mut state = ProofState { goals: vec![goal], solved_goal_explanations: HashMap::default(), proof: HashMap::default(), start_time: Instant::now() };
   while !state.goals.is_empty() {
     if state.timeout() {
@@ -566,7 +613,9 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
       }
       return (Outcome::Unknown, state);
     }
-    goal.case_split(&mut state);
+    let goal_name = goal.name.clone();
+    // If we are not making cyclic lemmas, then we should only add a lemma from the initial gaol.
+    goal.case_split(&mut state, make_cyclic_lemmas || goal_name == initial_goal_name);
     if CONFIG.verbose {
       println!("{}", "Case splitting and continuing...".purple());
     }

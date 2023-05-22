@@ -27,6 +27,8 @@ pub struct Args {
   pub explain_results: bool,
   #[clap(short = 'v', long = "verbose")]
   pub verbose: bool,
+  #[clap(long = "verbose-proofs")]
+  pub verbose_proofs: bool,
 }
 
 pub struct Config {
@@ -42,6 +44,7 @@ pub struct Config {
   pub save_results: bool,
   pub explain_results: bool,
   pub verbose: bool,
+  pub verbose_proofs: bool,
 }
 
 impl Config {
@@ -57,6 +60,7 @@ impl Config {
       save_results: args.save_results,
       explain_results: args.explain_results,
       verbose: args.verbose,
+      verbose_proofs: args.verbose_proofs,
     }
   }
 }
