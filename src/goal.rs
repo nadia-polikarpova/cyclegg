@@ -45,12 +45,12 @@ impl SmallerVar {
       //   // pass
       } else if expr_name != var_name {
         // Target is neither strictly smaller nor equal to source
-        warn!("cannot apply lemma with subst [{}]", info);
+        // warn!("cannot apply lemma with subst [{}]", info);
         return false;
       }
     }
     if has_strictly_smaller { warn!("applying lemma with subst [{}]", info); }
-    else { warn!("cannot apply lemma with subst [{}]", info); }
+    // else { warn!("cannot apply lemma with subst [{}]", info); }
     has_strictly_smaller
   }
 }
@@ -222,10 +222,10 @@ impl Goal {
 
     let mut rewrites = vec![];
     for rhs_expr in exprs.get(&rhs_id).unwrap() {
-      warn!("equivalence for lemma rhs {} and goal rhs: {}", rhs_expr, self.egraph.explain_equivalence(rhs_expr, &self.rhs).get_flat_string());
+      // warn!("equivalence for lemma rhs {} and goal rhs: {}", rhs_expr, self.egraph.explain_equivalence(rhs_expr, &self.rhs).get_flat_string());
     }
     for lhs_expr in exprs.get(&lhs_id).unwrap() {
-      warn!("equivalence for lemma lhs {} and goal lhs: {}", lhs_expr, self.egraph.explain_equivalence(lhs_expr, &self.lhs).get_flat_string());
+      // warn!("equivalence for lemma lhs {} and goal lhs: {}", lhs_expr, self.egraph.explain_equivalence(lhs_expr, &self.lhs).get_flat_string());
       let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
       if (CONFIG.irreducible_only && self.is_reducible(lhs_expr)) || has_guard_wildcards(&lhs) {
         continue;
@@ -346,6 +346,9 @@ impl Goal {
     let var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec!(ENodeOrVar::ENode(var_node.clone())).into();
     let var_id = self.egraph.lookup(var_node).unwrap();
     // Get the type of the variable, and then remove the variable
+    if let None = self.local_context.get(&var) {
+      panic!("{} not in local context", var);
+    }
     let ty = self.local_context.get(&var).unwrap();
     // Convert to datatype name
     let dt = Symbol::from(ty.datatype().unwrap());
@@ -413,6 +416,7 @@ impl Goal {
 
       // Remove old variable from the egraph and context
       remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
+      warn!("removing var {}", var);
       new_goal.local_context.remove(&var);
 
       // Add the subgoal to the proof state
@@ -592,7 +596,9 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
     if CONFIG.verbose {
       explain_goal_failure(&goal);
     }
+    warn!("goal scrutinees before split: {:?}", goal.scrutinees);
     goal.split_ite();
+    warn!("goal scrutinees after split: {:?}", goal.scrutinees);
     if goal.scrutinees.is_empty() {
       // This goal has no more variables to case-split on, 
       // so this goal, and hence the whole conjecture, is invalid

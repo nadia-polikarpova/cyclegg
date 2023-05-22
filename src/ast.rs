@@ -71,7 +71,7 @@ pub const APPLY: &str = "$";
 pub const GUARD_PREFIX: &str = "g-";
 
 pub fn var_depth(var_name: &str) -> usize {
-  var_name.matches("-").count()
+  var_name.matches("_").count()
 }
 
 pub fn is_descendant(var_name: &String, ancestor_name: &String) -> bool {
