@@ -297,8 +297,8 @@ impl Goal {
     let searcher: Pattern<SymbolLang> = format!("({} {} ?x ?y)", ITE, guard_var).parse().unwrap();
     let matches = searcher.search(&self.egraph);
     // Collects class IDs of all irreducible guards;
-    // it's a set because the same guard can match more than once, but we only want to add a new scrutinee once
-    let mut irreducible_guards = HashSet::new();
+    // it's a map because the same guard can match more than once, but we only want to add a new scrutinee once
+    let mut irreducible_guards = HashMap::new();
     for m in matches {
       for subst in m.substs {
         let guard_id = subst.get(guard_var).unwrap().clone();
@@ -306,12 +306,12 @@ impl Goal {
         let symbols: Vec<Symbol> = self.egraph[guard_id].nodes.iter().map(|n| n.op).collect();
         // This guard is irreducible if symbols are disjoint from reducible
         if !reducible.clone().any(|s| symbols.contains(s)) {
-          irreducible_guards.insert((guard_var, subst, guard_id));
+          irreducible_guards.insert(guard_id, subst);
         }
       }
     }
     // Iterate over all irreducible guard eclasses and add a new scrutinee to each
-    for (guard_var, subst, guard_id) in irreducible_guards {
+    for (guard_id, subst) in irreducible_guards {
       let fresh_var = Symbol::from(format!("{}{}", GUARD_PREFIX, guard_id));
       // This is here only for logging purposes
       let expr = Extractor::new(&self.egraph, AstSize).find_best(guard_id).1;
