@@ -2,7 +2,7 @@ use std::collections::{VecDeque, HashSet, HashMap};
 use egg::{*};
 use log::{warn, error};
 use colored::Colorize;
-use symbolic_expressions::Sexp;
+use symbolic_expressions::{Sexp, parser};
 use std::time::{Instant, Duration};
 
 use crate::ast::{*};
@@ -18,7 +18,11 @@ const BOUND_EXCEEDED: &str = "__";
 
 /// Condition that checks whether the substitution is into a smaller tuple of variable
 #[derive(Clone)]
-struct SmallerVar(Vec<Symbol>);
+pub struct SmallerVar {
+  pub scrutinees: Vec<Symbol>,
+  pub ty_splits: HashMap<String, Sexp>,
+}
+
 impl SmallerVar {
   /// Substitution as a string, for debugging purposes
   fn pretty_subst(subst: &Vec<(&Symbol, Expr)>) -> String {
@@ -30,27 +34,42 @@ impl SmallerVar {
   /// For now implements a sound but incomplete measure,
   /// where all components of the range need to be no larger, and at least one has to be strictly smaller.
   /// TODO: Implement a fancy automata-theoretic check here.
-  fn smaller_tuple(subst: &Vec<(&Symbol, Expr)>) -> bool {
+  fn smaller_tuple(subst: &Vec<(&Symbol, Expr)>, ty_splits: &HashMap<String, Sexp>) -> bool {
     let mut has_strictly_smaller = false;
     let info = SmallerVar::pretty_subst(subst);    
     for (var, expr) in subst {
       let var_name = var.to_string();
       let expr_name = expr.to_string();
-      if is_descendant(&expr_name, &var_name) {
-        // Target is strictly smaller than source
-        has_strictly_smaller = true;
-      // } else if expr_name == "Z" {
-      //   // pass
-      // } else if var_name == "n" && expr_name == "(S n_40)" {
-      //   // pass
-      } else if expr_name != var_name {
-        // Target is neither strictly smaller nor equal to source
-        // warn!("cannot apply lemma with subst [{}]", info);
+      let var_sexp = Sexp::String(var_name.clone());
+      let sexp = parser::parse_str(&expr_name).unwrap();
+      if contains_function(&sexp) {
         return false;
       }
+      let var_sexp = &fix_singletons(resolve_variable(&var_name, ty_splits));
+      let structural_comparison_result = structural_comparision(&sexp, var_sexp);
+      warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
+      if let StructuralComparison::LT = structural_comparison_result {
+        warn!("{} is smaller than {}", sexp, var_name);
+        has_strictly_smaller = true;
+      } else if let StructuralComparison::Incomparable = structural_comparison_result {
+        warn!("cannot apply lemma with subst [{}], reason: {:?}", info, structural_comparison_result);
+        return false;
+      }
+      // if is_descendant(&expr_name, &var_name) {
+      //   // Target is strictly smaller than source
+      //   has_strictly_smaller = true;
+      // // } else if expr_name == "Z" {
+      // //   // pass
+      // // } else if var_name == "n" && expr_name == "(S n_40)" {
+      // //   // pass
+      // } else if expr_name != var_name {
+      //   // Target is neither strictly smaller nor equal to source
+      //   // warn!("cannot apply lemma with subst [{}]", info);
+      //   return false;
+      // }
     }
     if has_strictly_smaller { warn!("applying lemma with subst [{}]", info); }
-    // else { warn!("cannot apply lemma with subst [{}]", info); }
+    else { warn!("cannot apply lemma with subst [{}]", info); }
     has_strictly_smaller
   }
 }
@@ -60,13 +79,13 @@ impl Condition<SymbolLang, ()> for SmallerVar {
   fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
     let extractor = Extractor::new(egraph, AstSize);
     // Lookup all variables in the subst; some may be undefined if the lemma has fewer parameters
-    let target_ids_mb = self.0.iter().map(|x| subst.get(to_wildcard(&x)));    
-    let pairs = self.0.iter()
+    let target_ids_mb = self.scrutinees.iter().map(|x| subst.get(to_wildcard(&x)));
+    let pairs = self.scrutinees.iter()
                   .zip(target_ids_mb)                                       // zip variables with their substitutions
                   .filter(|(_, mb)| mb.is_some())                           // filter out undefined variables
                   .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1)); // actually look up the expression by class id
     // Check that the expressions are smaller variables
-    SmallerVar::smaller_tuple(&pairs.collect())
+    SmallerVar::smaller_tuple(&pairs.collect(), &self.ty_splits)
   }
 }
 
@@ -87,16 +106,17 @@ pub struct Goal {
   pub explanation: Option<Explanation<SymbolLang>>,
   /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
   reductions: Vec<Rw>,
-  pub lemmas: Vec<Rw>,
+  // TODO: Could be a hashmap
+  pub lemmas: Vec<(String, Pat, Pat, SmallerVar)>,
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
   // /// The top-level universally-quanitifed variables used as the arugments for
   // /// the proof: these are the roots of ty_splits
   // pub top_level_variables: Vec<Symbol>,
-  // /// Map from a variable to its split (right now we only track data constructor
-  // /// splits)
-  // pub ty_splits: HashMap<Symbol, Sexp>,
+  /// Map from a variable to its split (right now we only track data constructor
+  /// splits)
+  pub ty_splits: HashMap<String, Sexp>,
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
@@ -136,6 +156,7 @@ impl Goal {
       reductions: reductions.to_vec(),
       lemmas: vec![],
       local_context: Context::new(),
+      ty_splits: HashMap::new(),
       scrutinees: VecDeque::new(),
       lhs: lhs.clone(),
       lhs_id,
@@ -160,6 +181,7 @@ impl Goal {
         reductions: self.reductions.clone(),
         lemmas: self.lemmas.iter().chain(self.lemmas.iter()).cloned().collect(),
         local_context: self.local_context.clone(),
+        ty_splits: self.ty_splits.clone(),
         scrutinees: self.scrutinees.clone(),
         lhs: self.lhs.clone(),
         // lhs: var_rec_expr.clone(),
@@ -189,7 +211,9 @@ impl Goal {
 
   /// Saturate the goal by applying all available rewrites
   pub fn saturate(mut self) -> Self {
-    let rewrites = self.reductions.iter().chain(self.lemmas.iter());
+    // FIXME: don't collect/clone?
+    let lemmas: Vec<Rw> = self.lemmas.iter().map(|(name, lhs, rhs, cond)| Rewrite::new(name, lhs.clone(), ConditionalApplier { applier: rhs.clone(), condition: cond.clone() }).unwrap()).collect();
+    let rewrites = self.reductions.iter().chain(lemmas.iter());
     let mut runner = Runner::default().with_explanations_enabled().with_egraph(self.egraph).run(rewrites);
     if runner.egraph.find(self.lhs_id) == runner.egraph.find(self.rhs_id) {
       self.explanation = Some(runner.explain_equivalence(&self.lhs, &self.rhs))
@@ -214,7 +238,7 @@ impl Goal {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
-  fn mk_lemma_rewrites(&mut self, state: &ProofState) -> Vec<Rw> {
+  fn mk_lemma_rewrites(&mut self, state: &ProofState) -> Vec<(String, Pat, Pat, SmallerVar)> {
     let lhs_id = self.egraph.find(self.lhs_id);
     let rhs_id = self.egraph.find(self.rhs_id);
     let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
@@ -236,7 +260,10 @@ impl Goal {
         if (CONFIG.irreducible_only && self.is_reducible(rhs_expr)) || has_guard_wildcards(&rhs) {
           continue;
         }
-        let condition = SmallerVar(self.scrutinees.iter().cloned().collect());
+        let condition = SmallerVar {
+          scrutinees: self.scrutinees.iter().cloned().collect(),
+          ty_splits: self.ty_splits.clone(),
+        };
         let mut added_lemma = false;
         if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
           // if rhs has no extra wildcards, create a lemma lhs => rhs
@@ -259,13 +286,13 @@ impl Goal {
   }
 
   /// Add a rewrite `lhs => rhs` to `rewrites` if not already present
-  fn add_lemma(&self, lhs: Pat, rhs: Pat, cond: SmallerVar, rewrites: &mut Vec<Rw>) {
+  fn add_lemma(&self, lhs: Pat, rhs: Pat, cond: SmallerVar, rewrites: &mut Vec<(String, Pat, Pat, SmallerVar)>) {
     let name = format!("lemma-{}={}", lhs, rhs);
     let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
-    if !existing_lemmas.any(|r| r.name.to_string() == name) {
+    if !existing_lemmas.any(|lemma| lemma.0 == name) {
       // Only add the lemma if we don't already have it:
-      warn!("creating lemma: {} => {}", lhs, rhs);
-      let lemma = Rewrite::new(name, lhs, ConditionalApplier {condition: cond, applier: rhs}).unwrap();
+      // warn!("creating lemma: {} => {}", lhs, rhs);
+      let lemma = (name, lhs, rhs, cond);
       rewrites.push(lemma);
     }
   }
@@ -334,7 +361,7 @@ impl Goal {
     let lemmas = self.mk_lemma_rewrites(state);
     if mk_lemmas {
       for lemma in &lemmas {
-        warn!("Creating lemma {}", lemma.name);
+        warn!("Creating lemma {}", lemma.0);
       }
     }
 
@@ -371,6 +398,7 @@ impl Goal {
           self.lemmas.clone()
         },
         local_context: self.local_context.clone(),
+        ty_splits: self.ty_splits.clone(),
         scrutinees: self.scrutinees.clone(),
         lhs: self.lhs.clone(),
         // lhs: var_rec_expr.clone(),
@@ -400,6 +428,11 @@ impl Goal {
 
       // Create an application of the constructor to the fresh vars
       let con_app_string = format!("({} {})", con, fresh_vars.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(" "));
+      let con_app_sexp = parser::parse_str(&con_app_string).unwrap();
+      new_goal.ty_splits.insert(var.to_string(), con_app_sexp.clone());
+      for lemma in new_goal.lemmas.iter_mut() {
+        lemma.3.ty_splits.insert(var.to_string(), con_app_sexp.clone());
+      }
       let con_app: Expr = con_app_string.parse().unwrap();
       // new_goal.rhs = con_app.clone();
 

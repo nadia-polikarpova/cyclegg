@@ -1,3 +1,4 @@
+use log::warn;
 use symbolic_expressions::{Sexp, SexpError};
 use std::{str::FromStr, fmt::Display, collections::HashMap};
 use egg::{*};
@@ -76,6 +77,121 @@ pub fn var_depth(var_name: &str) -> usize {
 
 pub fn is_descendant(var_name: &String, ancestor_name: &String) -> bool {
   var_name.starts_with(ancestor_name) && var_name.len() > ancestor_name.len()
+}
+
+#[derive(PartialEq, PartialOrd, Ord, Eq, Debug)]
+pub enum StructuralComparison {
+  /// Strictly less than
+  LT,
+  /// Not greater than
+  LE,
+  /// Don't know - we reject these
+  Incomparable,
+}
+
+fn map_sexp<F>(f: F, sexp: &Sexp) -> Sexp
+  where F: Copy + Fn(&String) -> Sexp {
+  match sexp {
+    Sexp::Empty => Sexp::Empty,
+    Sexp::String(str) => f(str),
+    Sexp::List(list) => Sexp::List(list.iter().map(|s| map_sexp(f, s)).collect())
+  }
+}
+
+pub fn contains_function(sexp: &Sexp) -> bool {
+  match sexp {
+    Sexp::List(list) => {
+      if list.len() > 0 {
+        if let Sexp::String(str) = &list[0] {
+          if !is_constructor(str) {
+            return true;
+          }
+        }
+      }
+      list.iter().any(contains_function)
+    }
+    _ => false,
+  }
+}
+
+/// Requires that there are no cycles in ty_splits (which should be true)
+pub fn resolve_variable(var: &String, ty_splits: &HashMap<String, Sexp>) -> Sexp {
+  ty_splits.get(var)
+           .map(|sexp| map_sexp(|v| resolve_variable(v, ty_splits), sexp))
+           .unwrap_or(Sexp::String(var.clone()))
+}
+
+pub fn fix_singletons(sexp: Sexp) -> Sexp {
+  match sexp {
+    Sexp::List(list) => {
+      if list.len() == 1 {
+        fix_singletons(list[0].to_owned())
+      } else {
+        Sexp::List(list.into_iter().map(fix_singletons).collect())
+      }
+    }
+    _ => sexp,
+  }
+}
+
+pub fn structural_comparision(child: &Sexp, ancestor: &Sexp) -> StructuralComparison {
+  match (child, ancestor)  {
+    (Sexp::String(child_name), Sexp::String(ancestor_name)) => {
+      // If they are both constructors, they must match
+      if is_constructor(child_name) && is_constructor(ancestor_name) {
+        if child_name == ancestor_name {
+          StructuralComparison::LE
+        } else {
+          StructuralComparison::Incomparable
+        }
+      }
+      // If just the child is a constructor, then it is smaller
+      // If they are both variables and the child is a descendent, it is smaller
+      else if is_constructor(child_name) || is_descendant(child_name, ancestor_name){
+        StructuralComparison::LT
+      }
+      else if !is_constructor(ancestor_name) && child_name == ancestor_name {
+        StructuralComparison::LE
+      }
+      // Otherwise, we don't know how to compare them
+      else {
+        StructuralComparison::Incomparable
+      }
+    }
+    (Sexp::List(child_list), Sexp::List(ancestor_list)) => {
+      let mut result = StructuralComparison::LE;
+      let elem_comparison_results = child_list.iter().zip(ancestor_list.iter())
+        .map(|(child_elem, ancestor_elem)| structural_comparision(child_elem, ancestor_elem));
+      for elem_comparison_result in elem_comparison_results {
+        // If any part is incomparable, the entire thing is.
+        if elem_comparison_result == StructuralComparison::Incomparable {
+          return StructuralComparison::Incomparable;
+        }
+        result = std::cmp::min(result, elem_comparison_result);
+      }
+      result
+    }
+    (Sexp::Empty, Sexp::Empty) => {
+      StructuralComparison::LE
+    }
+    (Sexp::String(_), Sexp::List(ancestor_list)) => {
+      warn!("string to list comparison");
+      let mut ancestor_comparison_results = ancestor_list.iter().map(|ancestor_elem| structural_comparision(child, ancestor_elem));
+      // Ignore the constructor
+      ancestor_comparison_results.next();
+      for ancestor_comparison_result in ancestor_comparison_results {
+        // If any part is LE/LT, then it is LT because there is additional
+        // structure on the RHS (the constructor).
+        if ancestor_comparison_result == StructuralComparison::LE || ancestor_comparison_result == StructuralComparison::LT {
+          return StructuralComparison::LT;
+        }
+      }
+      StructuralComparison::Incomparable
+    }
+    // Consider the (List, String) case?
+    // Does (Empty, _) need to return LE/LT?
+    _ => StructuralComparison::Incomparable
+  }
 }
 
 pub fn is_constructor(var_name: &String) -> bool {
