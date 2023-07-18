@@ -114,6 +114,10 @@ pub fn contains_function(sexp: &Sexp) -> bool {
   }
 }
 
+pub fn resolve_sexp(sexp: &Sexp, ty_splits: &HashMap<String, Sexp>) -> Sexp {
+  map_sexp(|v| resolve_variable(v, ty_splits), sexp)
+}
+
 /// Requires that there are no cycles in ty_splits (which should be true)
 pub fn resolve_variable(var: &String, ty_splits: &HashMap<String, Sexp>) -> Sexp {
   ty_splits.get(var)
@@ -132,6 +136,20 @@ pub fn fix_singletons(sexp: Sexp) -> Sexp {
     }
     _ => sexp,
   }
+}
+
+fn structural_comparison_list(child: &Sexp, ancestors: &Vec<Sexp>) -> StructuralComparison {
+    let mut ancestor_comparison_results = ancestors.iter().map(|ancestor_elem| structural_comparision(child, ancestor_elem));
+    // Ignore the constructor
+    ancestor_comparison_results.next();
+    for ancestor_comparison_result in ancestor_comparison_results {
+      // If any part is LE/LT, then it is LT because there is additional
+      // structure on the RHS (the constructor).
+      if ancestor_comparison_result == StructuralComparison::LE || ancestor_comparison_result == StructuralComparison::LT {
+        return StructuralComparison::LT;
+      }
+    }
+    StructuralComparison::Incomparable
 }
 
 pub fn structural_comparision(child: &Sexp, ancestor: &Sexp) -> StructuralComparison {
@@ -159,15 +177,22 @@ pub fn structural_comparision(child: &Sexp, ancestor: &Sexp) -> StructuralCompar
       }
     }
     (Sexp::List(child_list), Sexp::List(ancestor_list)) => {
+      // Try to compare the two as if they matched
       let mut result = StructuralComparison::LE;
       let elem_comparison_results = child_list.iter().zip(ancestor_list.iter())
         .map(|(child_elem, ancestor_elem)| structural_comparision(child_elem, ancestor_elem));
       for elem_comparison_result in elem_comparison_results {
         // If any part is incomparable, the entire thing is.
         if elem_comparison_result == StructuralComparison::Incomparable {
-          return StructuralComparison::Incomparable;
+          result = StructuralComparison::Incomparable;
+          break;
         }
         result = std::cmp::min(result, elem_comparison_result);
+      }
+      // If that fails, try to compare the two as if the child is in any
+      // substructure.
+      if result != StructuralComparison::LT {
+        result = std::cmp::min(result,structural_comparison_list(child, ancestor_list))
       }
       result
     }
@@ -175,18 +200,7 @@ pub fn structural_comparision(child: &Sexp, ancestor: &Sexp) -> StructuralCompar
       StructuralComparison::LE
     }
     (Sexp::String(_), Sexp::List(ancestor_list)) => {
-      warn!("string to list comparison");
-      let mut ancestor_comparison_results = ancestor_list.iter().map(|ancestor_elem| structural_comparision(child, ancestor_elem));
-      // Ignore the constructor
-      ancestor_comparison_results.next();
-      for ancestor_comparison_result in ancestor_comparison_results {
-        // If any part is LE/LT, then it is LT because there is additional
-        // structure on the RHS (the constructor).
-        if ancestor_comparison_result == StructuralComparison::LE || ancestor_comparison_result == StructuralComparison::LT {
-          return StructuralComparison::LT;
-        }
-      }
-      StructuralComparison::Incomparable
+      structural_comparison_list(child, ancestor_list)
     }
     // Consider the (List, String) case?
     // Does (Empty, _) need to return LE/LT?
@@ -233,7 +247,7 @@ pub type Context = HashMap<Symbol, Type>;
 pub fn mk_context(descr: &[(&str, &str)]) -> Context {
   let mut ctx = Context::new();
   for (name, ty) in descr {
-    ctx.insert(Symbol::from(name), ty.parse().unwrap());
+    ctx.insert(Symbol::from(*name), ty.parse().unwrap());
   }
   ctx
 }
@@ -241,7 +255,7 @@ pub fn mk_context(descr: &[(&str, &str)]) -> Context {
 pub fn mk_env(descr: &[(&str, &str)]) -> Env {
   let mut env = Env::new();
   for (name, cons) in descr {
-    env.insert(Symbol::from(name), cons.split_whitespace().map(|s| Symbol::from(s)).collect());
+    env.insert(Symbol::from(*name), cons.split_whitespace().map(|s| Symbol::from(s)).collect());
   }
   env
 }

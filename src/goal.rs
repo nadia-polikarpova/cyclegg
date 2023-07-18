@@ -47,9 +47,9 @@ impl SmallerVar {
       }
       let var_sexp = &fix_singletons(resolve_variable(&var_name, ty_splits));
       let structural_comparison_result = structural_comparision(&sexp, var_sexp);
-      warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
+      // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
       if let StructuralComparison::LT = structural_comparison_result {
-        warn!("{} is smaller than {}", sexp, var_name);
+        // warn!("{} is smaller than {}", sexp, var_name);
         has_strictly_smaller = true;
       } else if let StructuralComparison::Incomparable = structural_comparison_result {
         warn!("cannot apply lemma with subst [{}], reason: {:?}", info, structural_comparison_result);
@@ -285,6 +285,73 @@ impl Goal {
     rewrites        
   }
 
+  /// Create rewrites `lhs => lhs'` and `rhs => rhs'` which will be used with the IH in lieu of cyclic lemmas.
+  fn mk_half_lemma_rewrites(&mut self, state: &ProofState) -> Vec<(String, Pat, Pat, SmallerVar)> {
+    let lhs_id = self.egraph.find(self.lhs_id);
+    let rhs_id = self.egraph.find(self.rhs_id);
+    let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
+    let is_var = |v| self.local_context.contains_key(v);
+
+    let original_lhs_sexp = parser::parse_str(&self.lhs.to_string()).unwrap();
+    let resolved_original_lhs_sexp = resolve_sexp(&original_lhs_sexp, &self.ty_splits);
+    let resolved_original_lhs: Expr = resolved_original_lhs_sexp.to_string().parse().unwrap();
+    let resolved_original_lhs_pat: Pattern<SymbolLang> = to_pattern(&resolved_original_lhs, is_var);
+
+    let original_rhs_sexp = parser::parse_str(&self.rhs.to_string()).unwrap();
+    let resolved_original_rhs_sexp = resolve_sexp(&original_rhs_sexp, &self.ty_splits);
+    let resolved_original_rhs: Expr = resolved_original_rhs_sexp.to_string().parse().unwrap();
+    let resolved_original_rhs_pat: Pattern<SymbolLang> = to_pattern(&resolved_original_rhs, is_var);
+
+    let mut rewrites = vec![];
+    for lhs_expr in exprs.get(&lhs_id).unwrap() {
+      if state.timeout() { return rewrites; }
+      let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
+      if lhs == resolved_original_lhs_pat {
+        continue;
+      }
+      if (CONFIG.irreducible_only && self.is_reducible(lhs_expr)) || has_guard_wildcards(&lhs) {
+        continue;
+      }
+      let condition = SmallerVar {
+        scrutinees: self.scrutinees.iter().cloned().collect(),
+        ty_splits: self.ty_splits.clone(),
+      };
+      let mut added_lemma = false;
+      if resolved_original_lhs_pat.vars().iter().all(|x| lhs.vars().contains(x)) {
+        // if original_lhs has no extra wildcards, create a lemma lhs => original_lhs
+        self.add_lemma(lhs.clone(), resolved_original_lhs_pat.clone(), condition.clone(), &mut rewrites);
+        added_lemma = true;
+      }
+      if !added_lemma {
+        warn!("cannot create a lemma from {} and {}", lhs, resolved_original_lhs_pat);
+      }
+    }
+    for rhs_expr in exprs.get(&rhs_id).unwrap() {
+      if state.timeout() { return rewrites; }
+      let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
+      if rhs == resolved_original_rhs_pat {
+        continue;
+      }
+      if (CONFIG.irreducible_only && self.is_reducible(rhs_expr)) || has_guard_wildcards(&rhs) {
+        continue;
+      }
+      let condition = SmallerVar {
+        scrutinees: self.scrutinees.iter().cloned().collect(),
+        ty_splits: self.ty_splits.clone(),
+      };
+      let mut added_lemma = false;
+      if resolved_original_rhs_pat.vars().iter().all(|x| rhs.vars().contains(x)) {
+        // if original_rhs has no extra wildcards, create a lemma rhs => original_rhs
+        self.add_lemma(rhs.clone(), resolved_original_rhs_pat.clone(), condition.clone(), &mut rewrites);
+        added_lemma = true;
+      }
+      if !added_lemma {
+        warn!("cannot create a lemma from {} and {}", rhs, resolved_original_rhs_pat);
+      }
+    }
+    rewrites
+  }
+
   /// Add a rewrite `lhs => rhs` to `rewrites` if not already present
   fn add_lemma(&self, lhs: Pat, rhs: Pat, cond: SmallerVar, rewrites: &mut Vec<(String, Pat, Pat, SmallerVar)>) {
     let name = format!("lemma-{}={}", lhs, rhs);
@@ -359,11 +426,16 @@ impl Goal {
   /// Consume this goal and add its case splits to the proof state
   fn case_split(mut self, state: &mut ProofState, mk_lemmas: bool) {
     let lemmas = self.mk_lemma_rewrites(state);
-    if mk_lemmas {
-      for lemma in &lemmas {
-        warn!("Creating lemma {}", lemma.0);
-      }
+    // if mk_lemmas {
+    //   for lemma in &lemmas {
+    //     warn!("Creating lemma {}", lemma.0);
+    //   }
+    // }
+    let half_lemmas = self.mk_half_lemma_rewrites(state);
+    for lemma in &half_lemmas {
+      warn!("Creating half lemma {}", lemma.0);
     }
+    // let half_lemmas = vec!();
 
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
@@ -393,9 +465,9 @@ impl Goal {
         explanation: None,
         reductions: self.reductions.clone(),
         lemmas: if mk_lemmas {
-          self.lemmas.iter().chain(lemmas.iter()).cloned().collect()
+          self.lemmas.iter().chain(half_lemmas.iter()).chain(lemmas.iter()).cloned().collect()
         } else {
-          self.lemmas.clone()
+          self.lemmas.iter().chain(half_lemmas.iter()).cloned().collect()
         },
         local_context: self.local_context.clone(),
         ty_splits: self.ty_splits.clone(),
@@ -415,6 +487,7 @@ impl Goal {
       let con_args = Goal::instantiate_constructor(con_ty, ty);
       // For each argument: create a fresh variable and add it to the context and to scrutinees
       let mut fresh_vars = vec![];
+      let mut instantiated_egraphs = vec![];
       for i in 0..con_args.len() {
         let fresh_var_name = format!("{}_{}{}", var, self.egraph.total_size(), i);
         let depth = var_depth(&fresh_var_name[..]);
@@ -424,6 +497,16 @@ impl Goal {
         let arg_type = &con_args[i];
         new_goal.local_context.insert(fresh_var, arg_type.clone());
         new_goal.add_scrutinee(fresh_var, arg_type, depth);
+        if arg_type == ty {
+          warn!("specializing {} to {}", var, fresh_var);
+          let mut instantiated_egraph = new_goal.egraph.clone();
+          let new_var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec!(ENodeOrVar::ENode(SymbolLang::leaf(fresh_var))).into();
+          instantiated_egraph.union_instantiations(&var_pattern_ast, &new_var_pattern_ast, &Subst::default(), format!("{} specialize lemmas", new_goal.name));
+          instantiated_egraph.rebuild();
+          // Remove the variable from the egraph
+          remove_node(&mut instantiated_egraph, &SymbolLang::leaf(var));
+          instantiated_egraphs.push(instantiated_egraph);
+        }
       }
 
       // Create an application of the constructor to the fresh vars
@@ -444,13 +527,39 @@ impl Goal {
       new_goal.egraph.add_expr(&con_app);
       let con_app_id = new_goal.egraph.lookup_expr(&con_app).unwrap();
       // Not sure if it's proper to use new_goal.name here
-      new_goal.egraph.union_instantiations(&var_pattern_ast.clone(), &rec_expr_to_pattern_ast(con_app), &Subst::default(), new_goal.name.clone());
+      new_goal.egraph.union_instantiations(&var_pattern_ast, &rec_expr_to_pattern_ast(con_app), &Subst::default(), new_goal.name.clone());
       new_goal.egraph.rebuild();
 
       // Remove old variable from the egraph and context
       remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
       warn!("removing var {}", var);
       new_goal.local_context.remove(&var);
+      new_goal.egraph.rebuild();
+
+      // println!("egraph size before: {}", new_goal.egraph.total_size());
+      // println!("egraph before: {:?}", new_goal.egraph); //new_goal.egraph.classes().map(|class| format!("{:?}", class)).collect::<String>());
+      // // Union the other lemma instantiations
+      // for instantiated_egraph in instantiated_egraphs {
+      //   // new_goal.egraph.egraph_union(&instantiated_egraph);
+      //   let right_unions = instantiated_egraph.get_union_equalities();
+      //   for (left, right, why) in right_unions {
+      //     let left_pattern = instantiated_egraph.id_to_pattern(left, &Default::default()).0.ast;
+      //     let right_pattern = instantiated_egraph.id_to_pattern(right, &Default::default()).0.ast;
+      //     if left_pattern == var_pattern_ast || right_pattern == var_pattern_ast {
+      //       continue;
+      //     }
+      //     println!("union between {} and {}", left_pattern, right_pattern);
+      //     new_goal.egraph.union_instantiations(
+      //       &left_pattern,
+      //       &right_pattern,
+      //       &Default::default(),
+      //       why,
+      //     );
+      //   }
+      //   new_goal.egraph.rebuild();
+      // }
+      // println!("egraph size after: {}", new_goal.egraph.total_size());
+      // println!("egraph after: {}", new_goal.egraph.classes().map(|class| format!("{:?}", class)).collect::<String>());
 
       // Add the subgoal to the proof state
       state.goals.push(new_goal);

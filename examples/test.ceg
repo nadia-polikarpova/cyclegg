@@ -45,6 +45,14 @@
 (=> (map ?f Nil          ) Nil                          )
 (=> (map ?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
 
+(:: elem (-> (Nat (List Nat)) Bool))
+(=> (elem ?n Nil          ) False                            )
+(=> (elem ?n (Cons ?x ?xs)) (ite (eq ?n ?x) True (elem ?n ?xs)))
+
+(:: append (-> ((List ?a) (List ?a)) (List ?a)))
+(=> (append Nil           ?ys) ?ys                       )
+(=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
+
 (=== good1 (n m) (Nat Nat)
   True
   (lt n (add n (S m)))  
@@ -74,5 +82,54 @@
   (add n m)
   (add m n)
 )
+
+(=== good5 (n) (Nat)
+  (add (sub n n) n)
+  n
+)
+
+(=== prop_69 (n m) (Nat Nat)
+  (leq n (add m n))
+  True
+)
+
+(// (=> (add ?x (S ?y)) (S (add ?x ?y))))
+(// (=> (leq (add ?m ?n)) (leq (add ?m (S ?n)))))
+(// (=> (leq (add ?m (S ?n))) (leq (add ?m ?n))))
+(=== prop_69_lem (n m) (Nat Nat)
+  (leq n (add m n))
+  (leq n (add m (S n)))
+)
+
+(// (=== right_s (n m) (Nat Nat)
+  (add m (S n))
+  (S (add m n))
+)
+
+(=== right_s_add (n m) (Nat Nat)
+  (add n (add m (S n)))
+  (add n (S (add m n)))
+)
+
+(=== right_s_add_k (k n m) (Nat Nat Nat)
+  (add k (add m (S n)))
+  (add k (S (add m n)))
+)
+
+(=== right_s_leq (n m) (Nat Nat)
+  (leq n (add m (S n)))
+  (leq n (S (add m n)))
+)
+
+(=== right_s_leq_k (k n m) (Nat Nat Nat)
+  (leq k (add m (S n)))
+  (leq k (S (add m n)))
+))
+
+(=== prop_28 (x xs) (Nat (List Nat))
+  (elem x (append xs (Cons x Nil)))
+  True
+)
+
 
 )

@@ -154,6 +154,9 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let goal = Goal::top(name, &lhs, &rhs, params, &state.env, &state.context, rules);
         state.goals.push(goal);
       }
+      "//" => {
+        // comment
+      }
       _ => panic!("unknown declaration: {}", decl),
     }
   }

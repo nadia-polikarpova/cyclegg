@@ -89,7 +89,7 @@
 
 (:: elem (-> (Nat (List Nat)) Bool))
 (=> (elem ?n Nil          ) False                            )
-(=> (elem ?n (Cons ?x ?xs)) (ite (eq n x) True (elem ?n ?xs)))
+(=> (elem ?n (Cons ?x ?xs)) (ite (eq ?n ?x) True (elem ?n ?xs)))
 
 (:: take (-> (Nat (List ?a)) (List ?a)))
 (=> (take Z      ?xs          ) Nil                    )
@@ -165,7 +165,7 @@
 (:: sorted (-> ((List Nat)) Bool))
 (=> (sorted Nil                    ) True                                )
 (=> (sorted (Cons ?x Nil)          ) True                                )
-(=> (sorted (Cons ?x (Cons ?y ?ys))) (and (leq x y) (sorted (Cons y ys))))
+(=> (sorted (Cons ?x (Cons ?y ?ys))) (and (leq ?x ?y) (sorted (Cons ?y ?ys))))
 
 (:: zip (-> ((List ?a) (List ?b)) (List (Pair ?a ?b))))
 (=> (zip Nil           ?ys          ) Nil                              )
@@ -219,26 +219,6 @@
   (len xs)
 )
 
-(=== prop_28 (x xs) (Nat (List Nat))
-  (elem x (append xs (Cons x Nil)))
-  True
-)
-
-(=== prop_29 (x xs) (Nat (List Nat))
-  (elem x (ins1 x xs))
-  True
-)
-
-(=== prop_30 (x xs) (Nat (List Nat))
-  (elem x (ins x xs))
-  True
-)
-
-(=== prop_37 (x xs) (Nat (List Nat))
-  (not (elem x (delete x xs)))
-  (True)
-)
-
 (=== prop_53 (n xs) (Nat (List Nat))
   (count n xs)
   (count n (sort xs))
@@ -272,6 +252,26 @@
 (=== prop_72 (i xs) (Nat (List a))
   (rev (drop i xs))
   (take (sub (len xs) i) (rev xs))
+)
+
+(=== prop_74 (i xs) (Nat (List a))
+  (rev (take i xs))
+  (drop (sub (len xs) i) (rev xs))
+)
+
+(=== prop_78 (xs) ((List Nat))
+  (sorted (sort xs))
+  True
+)
+
+(=== prop_81 (n m xs) (Nat Nat (List a))
+  (take n (drop m xs))
+  (drop m (take (add n m) xs))
+)
+
+(=== prop_47 (t) ((Tree a))
+  (height (mirror t))
+  (height t)
 )
 
 )

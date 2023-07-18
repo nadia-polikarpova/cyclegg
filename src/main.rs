@@ -32,7 +32,7 @@ fn main() -> std::io::Result<()> {
     let goal_rhs = goal.rhs.clone();
     println!("{} {}: {} = {}", "Proving begin".blue(), goal_name.blue(), goal_lhs, goal_rhs);
     let start = Instant::now();
-    let (result, mut proof_state) = goal::prove(goal.clone(), false);
+    let (result, mut proof_state) = goal::prove(goal.clone(), true);
     goal.name = format!("{}_no_cyclic", goal_name);
     // let (result_without_cyclic, _proof_state_without_cyclic) = goal::prove(goal.clone(), false);
     let duration = start.elapsed();
