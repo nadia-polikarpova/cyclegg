@@ -31,18 +31,20 @@ fn main() -> std::io::Result<()> {
     let goal_lhs = goal.lhs.clone();
     let goal_rhs = goal.rhs.clone();
     println!("{} {}: {} = {}", "Proving begin".blue(), goal_name.blue(), goal_lhs, goal_rhs);
-    let start = Instant::now();
+    let start_cyclic = Instant::now();
     let (result, mut proof_state) = goal::prove(goal.clone(), true);
+    let duration_cyclic = start_cyclic.elapsed();
     goal.name = format!("{}_no_cyclic", goal_name);
-    // let (result_without_cyclic, _proof_state_without_cyclic) = goal::prove(goal.clone(), false);
-    let duration = start.elapsed();
+    let start_non_cyclic = Instant::now();
+    let (result_without_cyclic, _proof_state_without_cyclic) = goal::prove(goal.clone(), false);
+    let duration_non_cyclic = start_non_cyclic.elapsed();
     if CONFIG.verbose {
       println!("{} {}: {} = {}", "Proving end".blue(), goal_name.blue(), goal_lhs, goal_rhs);
     }
-    // if result != result_without_cyclic {
-    //   println!("{}: with cyclic {}, without cyclic {} ", "Differing results".red(), result, result_without_cyclic);
-    // }
-    println!("{} = {} ({:.2} sec)", goal_name.blue(), result, duration.as_secs_f32());
+    if result != result_without_cyclic {
+      println!("{}: with cyclic {}, without cyclic {} ", "Differing results".red(), result, result_without_cyclic);
+    }
+    println!("{} = {} (cyclic: {:.2} ms, non cyclic: {:.2} ms)", goal_name.blue(), result, duration_cyclic.as_millis(), duration_non_cyclic.as_millis());
     if CONFIG.explain_results && !CONFIG.verbose {
       // for (goal_name, explanation) in &proof_state.solved_goal_explanations {
       //   println!("{} {}", "Proved case".bright_blue(), goal_name);
@@ -53,7 +55,7 @@ fn main() -> std::io::Result<()> {
       }
     }
     if let Some(ref mut file) = result_file {
-      let line = format!("{},{:?},{}\n", goal_name, result, duration.as_secs_f32());
+      let line = format!("{},{:?},{}\n", goal_name, result, duration_cyclic.as_secs_f32());
       file.write_all(line.as_bytes())?;
     }
   }

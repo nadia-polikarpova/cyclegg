@@ -33,6 +33,12 @@
 (=> (leq (S ?x) Z ) False          )
 (=> (leq (S ?x) (S ?y)) (leq ?x ?y))
 
+(:: eq (-> (Nat Nat) Bool))
+(=> (eq Z      Z     ) True      )
+(=> (eq Z      (S ?y)) False     )
+(=> (eq (S ?x) Z     ) False     )
+(=> (eq (S ?x) (S ?y)) (eq ?x ?y))
+
 (:: ite (-> (Bool ?a ?a) ?a))
 (=> (ite True ?x ?y ) ?x)
 (=> (ite False ?x ?y) ?y)
@@ -52,6 +58,11 @@
 (:: append (-> ((List ?a) (List ?a)) (List ?a)))
 (=> (append Nil           ?ys) ?ys                       )
 (=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
+
+(=== funny (x) (Nat)
+  (ite (lt Z x) (eq x x) False)
+  False
+)
 
 (=== good1 (n m) (Nat Nat)
   True
@@ -86,6 +97,16 @@
 (=== good5 (n) (Nat)
   (add (sub n n) n)
   n
+)
+
+(=== n_sn (n) (Nat)
+  (add n (S n))
+  (S (add n n))
+)
+
+(=== n_sn_provable (m n) (Nat)
+  (add m (S n))
+  (S (add m n))
 )
 
 (=== prop_69 (n m) (Nat Nat)
@@ -130,6 +151,5 @@
   (elem x (append xs (Cons x Nil)))
   True
 )
-
 
 )

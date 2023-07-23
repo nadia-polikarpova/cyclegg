@@ -419,9 +419,11 @@
   Nil
 )
 
-(=== prop_47 (t) ((Tree a))
-  (height (mirror t))
-  (height t)
+(//
+    (=== prop_47 (t) ((Tree a))
+    (height (mirror t))
+    (height t)
+    )
 )
 
 (=== prop_49 (xs ys) ((List a) (List a))

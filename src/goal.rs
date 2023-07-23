@@ -97,6 +97,70 @@ fn rec_expr_to_pattern_ast<L: Clone>(rec_expr: RecExpr<L>) -> RecExpr<ENodeOrVar
   enode_or_vars.into()
 }
 
+fn instantiate_vars(expr: &Expr, var_instantiations: &Vec<(Symbol, SymbolLang)>) -> Expr {
+  // This should only replace one node, but I guess if there is a duplication of
+  // the var in the RecExpr for some reason it will still work.
+  let new_expr: Vec<SymbolLang> = expr.as_ref().iter().map(|node| {
+    match node {
+      SymbolLang { op, children: _ } => {
+        for (var, target) in var_instantiations.iter() {
+          if op == var {
+            return target.clone();
+          }
+        }
+        return node.clone();
+      }
+    }
+  }).collect();
+  return Expr::from(new_expr);
+}
+
+fn find_parent_param<'a>(params: &'a Vec<(String, Type)>, var_name: &String) -> Option<(&'a String, &'a Type)> {
+  for (param_name, param_type) in params {
+    if is_descendant(var_name, param_name) {
+      return Some((param_name, param_type));
+    }
+  }
+  return None;
+}
+
+fn get_param_descendent_combinations(param_descendents: &HashMap<String, Vec<String>>) -> Vec<Vec<(String, String)>> {
+  // TODO CK: I think this is significant overkill. I'm pretty sure we don't need to take
+  // all combinations, but instead only some small part of them.
+  //
+  // At the very least we only need to do combinations of descendents with
+  // whatever new variable(s) we add - which will prevent some amount of
+  // combinatorial explosion.
+  let mut descendent_combinations: Vec<Vec<(String, String)>> = vec!(vec!());
+  for (param, descendents) in param_descendents.iter() {
+    let mut new_combinations = vec!();
+    for descendent in descendents {
+      for descendent_combination in descendent_combinations.iter() {
+        let mut new_combination = descendent_combination.clone();
+        new_combination.push((param.clone(), descendent.clone()));
+        new_combinations.push(new_combination);
+      }
+    }
+    descendent_combinations = new_combinations;
+  }
+  return descendent_combinations;
+}
+
+fn instantiate_descendent_lhs_and_rhs(egraph: &mut Eg, lhs: &Expr, rhs: &Expr, params_descendents: &HashMap<String, Vec<String>>) {
+  for param_instantiations in get_param_descendent_combinations(params_descendents) {
+    let var_instantiations = param_instantiations
+      .into_iter()
+      .map(|(param, descendent)| (Symbol::from(param), SymbolLang::leaf(descendent)))
+      .collect();
+    let new_lhs = instantiate_vars(lhs, &var_instantiations);
+    let new_rhs = instantiate_vars(rhs, &var_instantiations);
+    // println!("var_instantiations: {:?}, new lhs: {}, new rhs: {}", &var_instantiations, &new_lhs, &new_rhs);
+    egraph.add_expr(&new_lhs);
+    egraph.add_expr(&new_rhs);
+  }
+}
+
+
 /// Proof goal
 pub struct Goal {
   /// Goal name
@@ -120,6 +184,12 @@ pub struct Goal {
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
+  // FIXME: params/params_descendents could be much more efficient using Symbols
+  /// The parameters over which the theorem is quantified (these will probably
+  /// be case split on throughout proving)
+  pub params: Vec<(String, Type)>,
+  /// The descendents of each of the initial_vars
+  pub params_descendents: HashMap<String, Vec<String>>,
   /// Our goal is to prove lhs == rhs
   pub lhs: Expr,
   pub lhs_id: Id,
@@ -158,6 +228,9 @@ impl Goal {
       local_context: Context::new(),
       ty_splits: HashMap::new(),
       scrutinees: VecDeque::new(),
+      params: params.iter().map(|(param_symb, param_type)|(param_symb.to_string(), param_type.clone())).collect(),
+      // Each param is its own descendent
+      params_descendents: params.iter().map(|(param_symb, _)| (param_symb.to_string(), vec!(param_symb.to_string()))).collect(),
       lhs: lhs.clone(),
       lhs_id,
       rhs: rhs.clone(),
@@ -183,6 +256,8 @@ impl Goal {
         local_context: self.local_context.clone(),
         ty_splits: self.ty_splits.clone(),
         scrutinees: self.scrutinees.clone(),
+        params: self.params.clone(),
+        params_descendents: self.params_descendents.clone(),
         lhs: self.lhs.clone(),
         // lhs: var_rec_expr.clone(),
         lhs_id: self.lhs_id,
@@ -431,10 +506,11 @@ impl Goal {
     //     warn!("Creating lemma {}", lemma.0);
     //   }
     // }
-    let half_lemmas = self.mk_half_lemma_rewrites(state);
-    for lemma in &half_lemmas {
-      warn!("Creating half lemma {}", lemma.0);
-    }
+
+    // let half_lemmas = self.mk_half_lemma_rewrites(state);
+    // for lemma in &half_lemmas {
+    //   warn!("Creating half lemma {}", lemma.0);
+    // }
     // let half_lemmas = vec!();
 
     // Get the next variable to case-split on
@@ -465,13 +541,16 @@ impl Goal {
         explanation: None,
         reductions: self.reductions.clone(),
         lemmas: if mk_lemmas {
-          self.lemmas.iter().chain(half_lemmas.iter()).chain(lemmas.iter()).cloned().collect()
+          self.lemmas.iter().chain(lemmas.iter()).cloned().collect()
         } else {
-          self.lemmas.iter().chain(half_lemmas.iter()).cloned().collect()
+          self.lemmas.clone()
+          // self.lemmas.iter().chain(half_lemmas.iter()).cloned().collect()
         },
         local_context: self.local_context.clone(),
         ty_splits: self.ty_splits.clone(),
         scrutinees: self.scrutinees.clone(),
+        params: self.params.clone(),
+        params_descendents: self.params_descendents.clone(),
         lhs: self.lhs.clone(),
         // lhs: var_rec_expr.clone(),
         lhs_id: self.lhs_id,
@@ -487,26 +566,37 @@ impl Goal {
       let con_args = Goal::instantiate_constructor(con_ty, ty);
       // For each argument: create a fresh variable and add it to the context and to scrutinees
       let mut fresh_vars = vec![];
-      let mut instantiated_egraphs = vec![];
+      // let mut instantiated_egraphs = vec![];
+      let parent_param_opt = find_parent_param(&self.params, &var.to_string());
       for i in 0..con_args.len() {
         let fresh_var_name = format!("{}_{}{}", var, self.egraph.total_size(), i);
         let depth = var_depth(&fresh_var_name[..]);
-        let fresh_var = Symbol::from(fresh_var_name);        
+        let fresh_var = Symbol::from(fresh_var_name.clone());
         fresh_vars.push(fresh_var);
         // Add new variable to context
         let arg_type = &con_args[i];
         new_goal.local_context.insert(fresh_var, arg_type.clone());
         new_goal.add_scrutinee(fresh_var, arg_type, depth);
-        if arg_type == ty {
-          warn!("specializing {} to {}", var, fresh_var);
-          let mut instantiated_egraph = new_goal.egraph.clone();
-          let new_var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec!(ENodeOrVar::ENode(SymbolLang::leaf(fresh_var))).into();
-          instantiated_egraph.union_instantiations(&var_pattern_ast, &new_var_pattern_ast, &Subst::default(), format!("{} specialize lemmas", new_goal.name));
-          instantiated_egraph.rebuild();
-          // Remove the variable from the egraph
-          remove_node(&mut instantiated_egraph, &SymbolLang::leaf(var));
-          instantiated_egraphs.push(instantiated_egraph);
+        // If the argument is the same type as the parameter it's a parent of,
+        // it's a descendent of it (we won't consider descendents that don't
+        // have the same type).
+        if let Some((parent_param, parent_param_type)) = parent_param_opt {
+          if arg_type == parent_param_type {
+            self.params_descendents.get_mut(parent_param)
+                                   .unwrap_or(&mut Vec::new())
+                                   .push(fresh_var_name);
+          }
         }
+        // if arg_type == ty {
+        //   warn!("specializing {} to {}", var, fresh_var);
+        //   let mut instantiated_egraph = new_goal.egraph.clone();
+        //   let new_var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec!(ENodeOrVar::ENode(SymbolLang::leaf(fresh_var))).into();
+        //   instantiated_egraph.union_instantiations(&var_pattern_ast, &new_var_pattern_ast, &Subst::default(), format!("{} specialize lemmas", new_goal.name));
+        //   instantiated_egraph.rebuild();
+        //   // Remove the variable from the egraph
+        //   remove_node(&mut instantiated_egraph, &SymbolLang::leaf(var));
+        //   instantiated_egraphs.push(instantiated_egraph);
+        // }
       }
 
       // Create an application of the constructor to the fresh vars
@@ -561,6 +651,11 @@ impl Goal {
       // println!("egraph size after: {}", new_goal.egraph.total_size());
       // println!("egraph after: {}", new_goal.egraph.classes().map(|class| format!("{:?}", class)).collect::<String>());
 
+      if !mk_lemmas {
+        instantiate_descendent_lhs_and_rhs(&mut new_goal.egraph, &self.lhs, &self.rhs, &self.params_descendents);
+        new_goal.egraph.rebuild();
+      }
+
       // Add the subgoal to the proof state
       state.goals.push(new_goal);
     }
@@ -613,6 +708,26 @@ impl Goal {
     }
     res
   }
+
+  /// Checks to see if we will prove True = False by proving this goal (or if it
+  /// has already been proven).
+  fn is_impossible(&self) -> bool {
+    let true_symb = Symbol::from(TRUE);
+    let false_symb = Symbol::from(FALSE);
+    let true_e_class_opt = self.egraph.lookup(SymbolLang::leaf(true_symb));
+    let false_e_class_opt = self.egraph.lookup(SymbolLang::leaf(false_symb));
+    let lhs_id = self.egraph.find(self.lhs_id);
+    let rhs_id = self.egraph.find(self.rhs_id);
+    if let Some(true_e_class) = true_e_class_opt {
+      if let Some(false_e_class) = false_e_class_opt {
+        // println!("checking impossible: lhs_id:{} rhs_id:{} true_id:{} false_id:{}", lhs_id, rhs_id, true_e_class, false_e_class);
+        return true_e_class == false_e_class
+          || (true_e_class == lhs_id && false_e_class == rhs_id)
+          || (true_e_class == rhs_id && false_e_class == lhs_id);
+      }
+    }
+    return false;
+  }
 }
 
 #[derive(Clone, Debug)]
@@ -644,6 +759,7 @@ pub enum ProofTerm {
 pub struct ProofState {
   pub goals: Vec<Goal>,
   pub solved_goal_explanations: HashMap<String, Explanation<SymbolLang>>,
+  pub impossible_goals: HashSet<String>,
   pub proof: HashMap<String, ProofTerm>,
   pub start_time: Instant,
 }
@@ -711,7 +827,7 @@ pub fn explain_goal_failure(goal: &Goal) {
 /// Top-level interface to the theorem prover.
 pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) {
   let initial_goal_name = goal.name.clone();
-  let mut state = ProofState { goals: vec![goal], solved_goal_explanations: HashMap::default(), proof: HashMap::default(), start_time: Instant::now() };
+  let mut state = ProofState { goals: vec![goal], solved_goal_explanations: HashMap::default(), impossible_goals: HashSet::default(), proof: HashMap::default(), start_time: Instant::now() };
   while !state.goals.is_empty() {
     if state.timeout() {
       return (Outcome::Timeout, state);
@@ -738,6 +854,13 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
     if CONFIG.verbose {
       explain_goal_failure(&goal);
     }
+    // if goal.is_impossible() {
+    //   if CONFIG.verbose {
+    //     println!("{} {}: {}", "Proved case".bright_blue(), goal.name, "IMPOSSIBLE".bright_red());
+    //   }
+    //   state.impossible_goals.insert(goal.name);
+    //   continue;
+    // }
     warn!("goal scrutinees before split: {:?}", goal.scrutinees);
     goal.split_ite();
     warn!("goal scrutinees after split: {:?}", goal.scrutinees);
