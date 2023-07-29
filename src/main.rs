@@ -34,9 +34,10 @@ fn main() -> std::io::Result<()> {
     let start_cyclic = Instant::now();
     let (result, mut proof_state) = goal::prove(goal.clone(), true);
     let duration_cyclic = start_cyclic.elapsed();
-    goal.name = format!("{}_no_cyclic", goal_name);
+    let goal_name_without_cyclic = format!("{}_no_cyclic", goal_name);
+    goal.name = goal_name_without_cyclic.clone();
     let start_non_cyclic = Instant::now();
-    let (result_without_cyclic, _proof_state_without_cyclic) = goal::prove(goal.clone(), false);
+    let (result_without_cyclic, mut proof_state_without_cyclic) = goal::prove(goal.clone(), false);
     let duration_non_cyclic = start_non_cyclic.elapsed();
     if CONFIG.verbose {
       println!("{} {}: {} = {}", "Proving end".blue(), goal_name.blue(), goal_lhs, goal_rhs);
@@ -51,7 +52,12 @@ fn main() -> std::io::Result<()> {
       //   println!("{}", explanation.get_string());
       // }
       if let goal::Outcome::Valid = result {
-        println!("{}", explain_top(goal_name.clone(), &mut proof_state, goal_lhs, goal_rhs, goal_vars));
+        println!("Cyclic proof:");
+        println!("{}", explain_top(goal_name.clone(), &mut proof_state, goal_lhs.clone(), goal_rhs.clone(), goal_vars.clone()));
+      }
+      if let goal::Outcome::Valid = result_without_cyclic {
+        println!("Uncycled proof:");
+        println!("{}", explain_top(goal_name_without_cyclic.clone(), &mut proof_state_without_cyclic, goal_lhs, goal_rhs, goal_vars));
       }
     }
     if let Some(ref mut file) = result_file {

@@ -213,17 +213,7 @@
 (=> (headE (MkExpr (Cst ?x) ?n)     ) (MkExpr (Cst ?x) ?n))
 (=> (headE (MkExpr (App ?e1 ?e2) ?n)) (headE ?e1)         )
 
-(=== prop_75 (n m xs) (Nat Nat (List Nat))
-  (add (count n xs) (count n (Cons m Nil)))
-  (count n (Cons m xs))
-)
-
 (// provable with uncycling, not provable with cyclic)
-
-(=== rev_rev (xs) ((List a))
-  (rev (rev xs))
-  xs
-)
 
 (=== prop_04 (n xs) (Nat (List Nat))
   (S (count n xs))
@@ -240,6 +230,7 @@
   (drop m (take (add n m) xs))
 )
 
+(//
 (// not provable with uncycling, provable with cyclic)
 
 (=== good3 (xs) ((List Nat))
@@ -265,6 +256,7 @@
 (=== prop_75 (n m xs) (Nat Nat (List Nat))
   (add (count n xs) (count n (Cons m Nil)))
   (count n (Cons m xs))
+)
 )
 
 )

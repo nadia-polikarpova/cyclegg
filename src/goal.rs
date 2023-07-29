@@ -319,7 +319,7 @@ fn instantiate_new_ih_equalities(egraph: &mut Eg, prev_instantiations: &mut Vec<
     let new_rhs = resolve_sexp(rhs, &resolved_instantiation).to_string().parse().unwrap();
     // println!("new lhs: {}, new rhs: {}", &new_lhs, &new_rhs);
     // The instantiation as a string
-    let instantiation_str = new_instantiation.iter().map(|(var, value)| {
+    let instantiation_str = resolved_instantiation.iter().map(|(var, value)| {
       format!("{}={}", var, value)
     }).collect::<Vec<String>>().join(",");
     egraph.union_instantiations(&new_lhs, &new_rhs, &Subst::default(), format!("ih-equality-{}", instantiation_str));
