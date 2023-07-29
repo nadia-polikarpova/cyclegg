@@ -148,10 +148,12 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let param_types: Vec<Type> = param_type_list.iter().map(|x| Type::new(x.clone())).collect();
         let params = param_names.into_iter().zip(param_types.into_iter()).collect();
 
-        let lhs: Expr = decl.list()?[4].to_string().parse().unwrap();
-        let rhs: Expr = decl.list()?[5].to_string().parse().unwrap();
+        let lhs_sexp: Sexp = decl.list()?[4].clone();
+        let rhs_sexp: Sexp = decl.list()?[5].clone();
+        let lhs: Expr = lhs_sexp.to_string().parse().unwrap();
+        let rhs: Expr = rhs_sexp.to_string().parse().unwrap();
         let rules = &state.used_definitions(vec![&lhs, &rhs]);
-        let goal = Goal::top(name, &lhs, &rhs, params, &state.env, &state.context, rules);
+        let goal = Goal::top(name, lhs, lhs_sexp, rhs, rhs_sexp, params, &state.env, &state.context, rules);
         state.goals.push(goal);
       }
       "//" => {

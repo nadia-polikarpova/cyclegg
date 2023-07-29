@@ -59,6 +59,34 @@
 (=> (append Nil           ?ys) ?ys                       )
 (=> (append (Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
 
+(data Test (A B))
+(:: A Test)
+(:: B (-> (Nat) Test))
+
+(:: test_id (-> (Test) Nat))
+(=> (test_id A) A)
+(=> (test_id (B ?x)) (B (nat_id ?x)))
+
+(:: nat_id (-> (Nat) Nat))
+(=> (nat_id Z) Z)
+(=> (nat_id (S ?x)) (S (nat_id ?x)))
+
+(=== weird (x) (Test)
+  (test_id x)
+  x
+)
+
+(=== prop_nat_id (x) (Nat)
+  (nat_id x)
+  x
+)
+
+(=== funny (x) (Nat)
+  (ite (lt Z x) (eq x x) False)
+  False
+)
+
+(//
 (=== funny (x) (Nat)
   (ite (lt Z x) (eq x x) False)
   False
@@ -79,11 +107,14 @@
   x
 )
 
+)
+
 (=== good3 (xs) ((List Nat))
   (sub (head xs) (head xs))
   Z
 )
 
+( //
 (=== good4 (xs) ((List a))
   (map id xs)
   xs
@@ -150,6 +181,8 @@
 (=== prop_28 (x xs) (Nat (List Nat))
   (elem x (append xs (Cons x Nil)))
   True
+)
+
 )
 
 )

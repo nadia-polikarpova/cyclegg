@@ -39,6 +39,10 @@
 (=> (ite True ?x ?y ) ?x)
 (=> (ite False ?x ?y) ?y)
 
+(:: head (-> (List ?a) ?a))
+(=> (head Nil) Z)
+(=> (head (Cons ?x ?xs)) ?x)
+
 (:: not (-> (Bool) Bool))
 (=> (not True) False)
 (=> (not False) True)
@@ -209,11 +213,31 @@
 (=> (headE (MkExpr (Cst ?x) ?n)     ) (MkExpr (Cst ?x) ?n))
 (=> (headE (MkExpr (App ?e1 ?e2) ?n)) (headE ?e1)         )
 
+(=== prop_75 (n m xs) (Nat Nat (List Nat))
+  (add (count n xs) (count n (Cons m Nil)))
+  (count n (Cons m xs))
+)
+
 (// provable with uncycling, not provable with cyclic)
+
+(=== rev_rev (xs) ((List a))
+  (rev (rev xs))
+  xs
+)
 
 (=== prop_04 (n xs) (Nat (List Nat))
   (S (count n xs))
   (count n (Cons n xs))
+)
+
+(=== prop_66 (p xs) ((-> a Bool) (List a))
+  (leq (len (filter p xs)) (len xs))
+  True
+)
+
+(=== prop_81 (n m xs) (Nat Nat (List a))
+  (take n (drop m xs))
+  (drop m (take (add n m) xs))
 )
 
 (// not provable with uncycling, provable with cyclic)
@@ -236,6 +260,11 @@
 (=== prop_73 (p xs) ((-> a Bool) (List a))
   (rev (filter p xs))
   (filter p (rev xs))
+)
+
+(=== prop_75 (n m xs) (Nat Nat (List Nat))
+  (add (count n xs) (count n (Cons m Nil)))
+  (count n (Cons m xs))
 )
 
 )
