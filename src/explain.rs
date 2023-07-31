@@ -1,6 +1,7 @@
 use egg::*;
 use symbolic_expressions::Sexp;
 use std::collections::HashMap;
+use itertools::{Itertools, EitherOrBoth};
 
 use crate::ast::{Type, Expr};
 use crate::goal::{ProofState, ProofTerm};
@@ -25,6 +26,7 @@ const APPLY: &str = "$";
 const ARROW: &str = "->";
 const FORWARD_ARROW: &str = "=>";
 const BACKWARD_ARROW: &str = "<=";
+const IH_EQUALITY: &str = "ih-equality-";
 
 /// A rewrite can be forward or backward, this specifies which direction it
 /// goes.
@@ -81,45 +83,61 @@ pub fn explain_top(goal: String, state: &mut ProofState, lhs: Expr, rhs: Expr, t
     str_explanation.push('\n');
 
     // Finally, we can do the proof explanation
-    let proof_exp = explain_proof(1, goal, state);
+    let proof_exp = explain_proof(1, goal.clone(), state, &goal);
     str_explanation.push_str(&proof_exp);
     str_explanation
 }
 
-fn explain_proof(depth: usize, goal: String, state: &mut ProofState) -> String {
+fn explain_proof(depth: usize, goal: String, state: &mut ProofState, top_goal_name: &String) -> String {
     // If it's not in the proof tree, it must be a leaf.
     if !state.proof.contains_key(&goal) {
         // The explanation should be in solved_goal_explanations. If it isn't,
         // we must be trying to explain an incomplete proof which is an error.
-        return explain_goal(depth, state.solved_goal_explanations.get_mut(&goal).unwrap());
+        return explain_goal(depth, state.solved_goal_explanations.get_mut(&goal).unwrap(), top_goal_name);
     }
     // Need to clone to avoid borrowing... unfortunately this is all because we need
     // a mutable reference to the explanations for some annoying reason
-    match state.proof.get(&goal).unwrap().clone() {
-        ProofTerm::CaseSplit(var, cases) => {
-            let mut str_explanation = String::new();
-            add_indentation(&mut str_explanation, depth);
+    let proof_term = state.proof.get(&goal).unwrap().clone();
+    let mut str_explanation = String::new();
+    let mut proof_depth = depth;
+    let mut case_depth = depth + 1;
+    if let ProofTerm::ITESplit(var, condition, _) = &proof_term {
+        add_indentation(&mut str_explanation, proof_depth);
+        str_explanation.push_str(&format!("let {} = {} in", var, condition));
+        str_explanation.push('\n');
+        case_depth += 1;
+        proof_depth += 1;
+    };
+    match &proof_term {
+        ProofTerm::CaseSplit(var, cases) | ProofTerm::ITESplit(var, _, cases) => {
+            add_indentation(&mut str_explanation, proof_depth);
             str_explanation.push_str(&format!("case {} of", var));
             str_explanation.push('\n');
-            let case_depth = depth + 1;
             for (case_constr, case_goal) in cases {
                 add_indentation(&mut str_explanation, case_depth);
                 str_explanation.push_str(&format!("{} ->", case_constr));
                 str_explanation.push('\n');
                 // Recursively explain the proof
-                str_explanation.push_str(&explain_proof(case_depth + 1, case_goal.to_string(), state));
+                str_explanation.push_str(&explain_proof(case_depth + 1, case_goal.clone(), state, &top_goal_name));
             }
             str_explanation
         }
     }
 }
 
-fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>) -> String {
+fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>, top_goal_name: &String) -> String {
     // TODO: Add lemma justification with USING_LEMMA
     let mut str_explanation: String = String::new();
     let flat_terms = explanation.make_flat_explanation();
+    let next_flat_term_iter = flat_terms.iter().skip(1);
+    let flat_term_and_next = flat_terms.into_iter().zip_longest(next_flat_term_iter);
     // Render each of the terms in the explanation
-    let flat_strings: Vec<String> = flat_terms.into_iter().map(|flat_term| {
+    let flat_strings: Vec<String> = flat_term_and_next.map(|flat_term_and_next| {
+        let (flat_term, next_term_opt) = match flat_term_and_next {
+            EitherOrBoth::Both(flat_term, next_term) => (flat_term, Some(next_term)),
+            EitherOrBoth::Left(flat_term) => (flat_term, None),
+            EitherOrBoth::Right(_) => unreachable!("next_flat_term_iter somehow is longer than flat_term_iter"),
+        };
         let mut str = String::new();
         if CONFIG.verbose_proofs {
             if let Some(rule_name) = &extract_rule_name(flat_term) {
@@ -132,6 +150,19 @@ fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>) -> Stri
         }
         add_indentation(&mut str, depth);
         str.push_str(&flat_term_to_sexp(flat_term).to_string());
+        if let Some(next_term) = next_term_opt {
+            if let Some(rule_name) = &extract_rule_name(next_term) {
+                if rule_name.starts_with(IH_EQUALITY) {
+                    let args = extract_ih_arguments(rule_name);
+                    add_indentation(&mut str, depth);
+                    str.push_str(USING_LEMMA);
+                    str.push(' ');
+                    str.push_str(top_goal_name);
+                    str.push(' ');
+                    str.push_str(&args.join(" "));
+                }
+            }
+        }
         str
     }).collect();
     // Construct a joiner that intersperses newlines and properly spaced
@@ -172,6 +203,8 @@ fn flat_term_to_sexp(flat_term: &FlatTerm<SymbolLang>) -> Sexp {
     }
 }
 
+// TODO: return a custom struct indicating what direction it is and
+// use that to determine where to put the lemma invocation.
 fn extract_rule_name(flat_term: &FlatTerm<SymbolLang>) -> Option<String> {
     let forward = flat_term.forward_rule.map(|rule| rule.to_string() + " " + FORWARD_ARROW);
     let backward = flat_term.backward_rule.map(|rule| BACKWARD_ARROW.to_string() + " " + &rule.to_string());
@@ -216,6 +249,16 @@ fn convert_ty(ty: Sexp) -> String {
         },
         Sexp::Empty => String::new(),
     }
+}
+
+fn extract_ih_arguments(rule_name: &String) -> Vec<String> {
+    rule_name.strip_prefix(IH_EQUALITY).unwrap().split(',').into_iter().map(|pair|{
+        println!("{}", pair);
+        let args: Vec<&str> = pair.split('=').into_iter().collect();
+        // This should just be x=(Constructor c1 c2 c3)
+        assert_eq!(args.len(), 2);
+        args[1].to_string()
+    }).collect()
 }
 
 // TODO: Lemma generation.

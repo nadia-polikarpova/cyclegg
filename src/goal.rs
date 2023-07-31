@@ -278,7 +278,7 @@ fn resolve_var_instantiation(instantiation: &HashMap<String, Sexp>,
 /// discover new instantiations of the LHS and RHS that we can unify using this
 /// variable.
 fn instantiate_new_ih_equalities(egraph: &mut Eg, prev_instantiations: &mut Vec<HashMap<String, Sexp>>,
-                                 var: &String, var_ancestors: &Vec<String>, lhs: &Sexp, rhs: &Sexp) {
+                                 var: &String, var_ancestors: &Vec<String>, lhs: &Sexp, rhs: &Sexp, params: &Vec<String>) {
   let new_instantiations: Vec<HashMap<String, Sexp>> =
     prev_instantiations.iter().flat_map(|instantiation| {
     // TODO: do we need to take the powerset of the ancestors here? I don't
@@ -319,8 +319,8 @@ fn instantiate_new_ih_equalities(egraph: &mut Eg, prev_instantiations: &mut Vec<
     let new_rhs = resolve_sexp(rhs, &resolved_instantiation).to_string().parse().unwrap();
     // println!("new lhs: {}, new rhs: {}", &new_lhs, &new_rhs);
     // The instantiation as a string
-    let instantiation_str = resolved_instantiation.iter().map(|(var, value)| {
-      format!("{}={}", var, value)
+    let instantiation_str = params.iter().map(|param| {
+      format!("{}={}", param, resolved_instantiation[param])
     }).collect::<Vec<String>>().join(",");
     egraph.union_instantiations(&new_lhs, &new_rhs, &Subst::default(), format!("ih-equality-{}", instantiation_str));
   }
@@ -347,9 +347,14 @@ pub struct Goal {
   /// Map from a variable to its split (right now we only track data constructor
   /// splits)
   pub ty_splits: HashMap<String, Sexp>,
+  /// The top-level parameters to the goal
+  pub params: Vec<String>,
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
+  /// Stores the expression each guard variable maps to. Since we only need
+  /// these for proof emission, we just store the expression as a String.
+  pub guard_exprs: HashMap<String, String>,
   pub prev_var_instantiations: Vec<HashMap<String, Sexp>>,
   // TODO: add set tracking the variable instantiations we have so far
   // used. this will be used to build up potential other instantiations we can
@@ -404,6 +409,8 @@ impl Goal {
       lemmas: vec![],
       local_context: Context::new(),
       ty_splits: HashMap::new(),
+      params: params.iter().map(|(p, _)| p.to_string()).collect(),
+      guard_exprs: HashMap::new(),
       scrutinees: VecDeque::new(),
       vars: params.iter().map(|(param_symb, param_type)|(param_symb.to_string(), param_type.clone())).collect(),
       // The only instantiation we've considered thus far is where every param maps to itself.
@@ -440,6 +447,8 @@ impl Goal {
         lemmas: self.lemmas.iter().chain(self.lemmas.iter()).cloned().collect(),
         local_context: self.local_context.clone(),
         ty_splits: self.ty_splits.clone(),
+        params: self.params.clone(),
+        guard_exprs: self.guard_exprs.clone(),
         scrutinees: self.scrutinees.clone(),
         prev_var_instantiations: self.prev_var_instantiations.clone(),
         vars: self.vars.clone(),
@@ -681,6 +690,7 @@ impl Goal {
       let new_pattern_ast = vec![ENodeOrVar::ENode(new_node.clone())].into();
       let new_id = self.egraph.add(SymbolLang::leaf(fresh_var));
       let guard_var_pattern_ast = vec![ENodeOrVar::Var(guard_var)].into();
+      self.guard_exprs.insert(fresh_var.to_string(), expr.to_string());
       self.egraph.union_instantiations(&guard_var_pattern_ast, &new_pattern_ast, &subst, "add guard scrutinee");
     }
     self.egraph.rebuild();
@@ -737,6 +747,8 @@ impl Goal {
           // self.lemmas.iter().chain(half_lemmas.iter()).cloned().collect(),
         local_context: self.local_context.clone(),
         ty_splits: self.ty_splits.clone(),
+        params: self.params.clone(),
+        guard_exprs: self.guard_exprs.clone(),
         scrutinees: self.scrutinees.clone(),
         prev_var_instantiations: self.prev_var_instantiations.clone(),
         vars: self.vars.clone(),
@@ -796,7 +808,7 @@ impl Goal {
             }
           }).collect();
           instantiate_new_ih_equalities(&mut new_goal.egraph, &mut new_goal.prev_var_instantiations,
-                                        &fresh_var_name, &ancestors, &new_goal.lhs_sexp, &new_goal.rhs_sexp);
+                                        &fresh_var_name, &ancestors, &new_goal.lhs_sexp, &new_goal.rhs_sexp, &new_goal.params);
         }
 
         // if arg_type == ty {
@@ -874,7 +886,19 @@ impl Goal {
       state.goals.push(new_goal);
     }
     // We split on var into the various instantiated constructors and subgoals.
-    state.proof.insert(self.name, ProofTerm::CaseSplit(var.to_string(), instantiated_cons_and_goals));
+    //
+    // If the var begins with "g-", it is an ITE split and we will add the
+    // condition that was split on to our proof term. This is necessary
+    // because for ITE splits we introduce a new variable that we bind
+    // an expression to.
+    if var_str.starts_with("g-") {
+      // There should only be two cases.
+      assert_eq!(instantiated_cons_and_goals.len(), 2);
+      state.proof.insert(self.name, ProofTerm::ITESplit(var_str.clone(), self.guard_exprs[&var_str].clone(), instantiated_cons_and_goals));
+    // Otherwise, we are doing a case split on a variable.
+    } else {
+      state.proof.insert(self.name, ProofTerm::CaseSplit(var_str.clone(), instantiated_cons_and_goals));
+    }
   }
 
   /// Save e-graph to file
@@ -966,6 +990,7 @@ pub enum ProofTerm {
   // ITEIntro(String, Sexp, String) which we can implement as a let, e.g.
   //   let g = x <= y in ...
   // where ... corresponds to the CaseSplit goal identified by the last String.
+  ITESplit(String, String, Vec<(String, String)>),
 }
 
 /// A proof state is a list of subgoals,
