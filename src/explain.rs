@@ -3,6 +3,7 @@ use symbolic_expressions::Sexp;
 use std::collections::HashMap;
 use std::str::FromStr;
 use itertools::{Itertools, EitherOrBoth};
+use indexmap::IndexMap;
 
 use crate::ast::{Type, Expr, Env, Context, Defns};
 use crate::goal::{ProofState, ProofTerm};
@@ -39,7 +40,8 @@ const APPLY: &str = "$";
 const ARROW: &str = "->";
 const FORWARD_ARROW: &str = "=>";
 const BACKWARD_ARROW: &str = "<=";
-const IH_EQUALITY: &str = "ih-equality-";
+const IH_EQUALITY_PREFIX: &str = "ih-equality-";
+const LEMMA_PREFIX: &str = "lemma-";
 
 /// A rewrite can be forward or backward, this specifies which direction it
 /// goes.
@@ -305,10 +307,10 @@ fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>, top_goa
         add_indentation(&mut str, depth);
         str.push_str(&flat_term_to_sexp(flat_term).to_string());
         if let Some(next_term) = next_term_opt {
-            // We don't care about the direction of the rewrite because both
-            // directions are justified by the equality from the IH.
-            if let Some((rule_name, _)) = &extract_rule_name(next_term) {
-                if rule_name.starts_with(IH_EQUALITY) {
+            // We don't care about the direction of the rewrite because lemmas
+            // and the IH prove equalities which are bidirectional.
+            if let Some((rule_name, rw_dir)) = &extract_rule_name(next_term) {
+                if rule_name.starts_with(IH_EQUALITY_PREFIX) {
                     str.push('\n');
                     let args = extract_ih_arguments(rule_name);
                     add_indentation(&mut str, depth);
@@ -317,6 +319,9 @@ fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>, top_goa
                     str.push_str(top_goal_name);
                     str.push(' ');
                     str.push_str(&args.join(" "));
+                } else if rule_name.starts_with(LEMMA_PREFIX) {
+                    // println!("extracting lemma from {} {} {}", rule_name, flat_term, next_term);
+                    str.push_str(&extract_lemma_invocation(rule_name, rw_dir, flat_term, next_term, depth));
                 }
             }
         }
@@ -340,6 +345,53 @@ fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>, top_goa
     str_explanation.push_str(QED);
     str_explanation.push('\n');
     str_explanation
+}
+
+fn extract_lemma_invocation(rule_str: &String, rw_dir: &RwDirection,
+                            curr_term: &FlatTerm<SymbolLang>,
+                            next_term: &FlatTerm<SymbolLang>,
+                            depth: usize) -> String {
+    let mut lemma_str = String::new();
+    let mut rewrite_pos: Vec<i32> = vec!();
+    let trace = find_rewritten_term(&mut rewrite_pos, next_term).unwrap();
+    let rewritten_to = get_flat_term_from_trace(&trace, &next_term);
+    let rewritten_from = get_flat_term_from_trace(&trace, &curr_term);
+    let lemma: Vec<&str> = rule_str.split(LEMMA_PREFIX).collect::<Vec<&str>>()[1]
+        .split(EQUALS)
+        .collect();
+
+    let mut lhsmap =
+        map_variables(lemma[0], &flat_term_to_sexp(&rewritten_from).to_string());
+    let rhsmap = map_variables(lemma[1], &flat_term_to_sexp(&rewritten_to).to_string());
+
+    match rw_dir {
+        RwDirection::Backward => {
+            assert!(lhsmap
+                    .iter()
+                    .all(|(key, value)| rhsmap.get(key) == Some(value)))
+        }
+        RwDirection::Forward => {
+            assert!(rhsmap
+                    .iter()
+                    .all(|(key, value)| lhsmap.get(key) == Some(value)))
+        }
+    }
+
+    // take the union of both maps
+    lhsmap.extend(rhsmap);
+
+    lemma_str.push('\n');
+    add_indentation(&mut lemma_str, depth);
+    lemma_str.push_str(USING_LEMMA);
+    lemma_str.push(' ');
+    lemma_str.push_str(&rule_str);
+
+    // add the lemma arguments
+    for (_, value) in lhsmap {
+        lemma_str.push_str(&format!(" {}", value));
+    }
+
+    lemma_str
 }
 
 fn add_indentation(s: &mut String, depth: usize) {
@@ -432,13 +484,101 @@ fn convert_ty(ty: &Sexp) -> String {
 }
 
 fn extract_ih_arguments(rule_name: &String) -> Vec<String> {
-    rule_name.strip_prefix(IH_EQUALITY).unwrap().split(',').into_iter().map(|pair|{
+    rule_name.strip_prefix(IH_EQUALITY_PREFIX).unwrap().split(',').into_iter().map(|pair|{
         // println!("{}", pair);
         let args: Vec<&str> = pair.split('=').into_iter().collect();
         // This should just be x=(Constructor c1 c2 c3)
         assert_eq!(args.len(), 2);
         args[1].to_string()
     }).collect()
+}
+/// Given a FlatTerm, locates the subterm that was rewritten by looking for a backward / forward rule
+/// and returns a trace of indices to that term.
+fn find_rewritten_term(trace: &mut Vec<i32>, flat_term: &FlatTerm<SymbolLang>) -> Option<Vec<i32>> {
+    if flat_term.backward_rule.is_some() || flat_term.forward_rule.is_some() {
+        Some(trace.to_vec())
+    } else {
+        for (i, child) in flat_term.children.iter().enumerate() {
+            if child.has_rewrite_backward() || child.has_rewrite_forward() {
+                trace.push(i as i32);
+                return find_rewritten_term(trace, child);
+            }
+        }
+        None
+    }
+}
+
+fn get_flat_term_from_trace(
+    trace: &Vec<i32>,
+    flat_term: &FlatTerm<SymbolLang>,
+) -> FlatTerm<SymbolLang> {
+    let mut current_flat_term = flat_term;
+    for i in trace {
+        current_flat_term = &current_flat_term.children[*i as usize];
+    }
+    current_flat_term.clone()
+}
+
+/// Given two strings, s1 and s2, where s1 is a pattern and s2 is a string
+/// returns a map from the variables in s1 to the corresponding substrings in s2.
+fn map_variables(s1: &str, s2: &str) -> IndexMap<String, String> {
+    let mut result_map = IndexMap::new();
+    // let mut stack = Vec::new();
+    let mut s1_iter = s1.chars().peekable();
+    let mut s2_iter = s2.chars().peekable();
+
+    while let Some(&c1) = s1_iter.peek() {
+        let c2 = s2_iter.peek().unwrap();
+        match c1 {
+            '?' => {
+                let mut temp_str = String::new();
+                let mut nested_paren_count = 0;
+
+                while let Some(&next_char) = s2_iter.peek() {
+                    match next_char {
+                        '(' if nested_paren_count > 0 => {
+                            temp_str.push(next_char);
+                            nested_paren_count += 1;
+                        }
+                        '(' => nested_paren_count += 1,
+                        ')' if nested_paren_count > 1 => {
+                            temp_str.push(next_char);
+                            nested_paren_count -= 1;
+                        }
+                        ')' => break,
+                        ' ' if nested_paren_count == 0 => break,
+                        _ => temp_str.push(next_char),
+                    }
+                    s2_iter.next();
+                }
+
+                if !temp_str.is_empty() {
+                    let mut extracted_str = String::new();
+                    s1_iter.next();
+                    while let Some(&next_char) = s1_iter.peek() {
+                        if next_char.is_whitespace() || next_char == ')' {
+                            break;
+                        }
+                        extracted_str.push(next_char);
+                        s1_iter.next();
+                    }
+
+                    s1_iter.next();
+
+                    result_map.insert(extracted_str, temp_str);
+                }
+            }
+            _ if c1 == *c2 => {
+                s1_iter.next();
+            }
+            _ => {
+                break;
+            }
+        }
+        s2_iter.next();
+    }
+
+    result_map
 }
 
 // TODO: Lemma generation.
