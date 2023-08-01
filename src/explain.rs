@@ -139,7 +139,7 @@ pub fn explain_top(
     str_explanation.push_str(JOINING_ARROW);
   }
   // This time we just use the Proof type
-  str_explanation.push_str(&PROOF);
+  str_explanation.push_str(PROOF);
   str_explanation.push('\n');
 
   // Haskell function definition
@@ -155,7 +155,7 @@ pub fn explain_top(
   if !args.is_empty() {
     str_explanation.push(' ');
   }
-  str_explanation.push_str(&EQUALS);
+  str_explanation.push_str(EQUALS);
   str_explanation.push('\n');
 
   // Finally, we can do the proof explanation
@@ -192,7 +192,7 @@ fn add_data_definitions(env: &Env, global_context: &Context) -> String {
       add_indentation(&mut data_defns_str, 1);
       data_defns_str.push_str(&constr.to_string());
       data_defns_str.push_str(JOINING_HAS_TYPE);
-      data_defns_str.push_str(&convert_ty(&global_context[&constr].repr));
+      data_defns_str.push_str(&convert_ty(&global_context[constr].repr));
       data_defns_str.push('\n');
     }
     data_defns_str.push('\n');
@@ -299,7 +299,7 @@ fn explain_proof(
           case_depth + 1,
           case_goal.clone(),
           state,
-          &top_goal_name,
+          top_goal_name,
         ));
       }
       str_explanation
@@ -310,13 +310,13 @@ fn explain_proof(
 fn explain_goal(
   depth: usize,
   explanation: &mut Explanation<SymbolLang>,
-  top_goal_name: &String,
+  top_goal_name: &str,
 ) -> String {
   // TODO: Add lemma justification with USING_LEMMA
   let mut str_explanation: String = String::new();
   let flat_terms = explanation.make_flat_explanation();
   let next_flat_term_iter = flat_terms.iter().skip(1);
-  let flat_term_and_next = flat_terms.into_iter().zip_longest(next_flat_term_iter);
+  let flat_term_and_next = flat_terms.iter().zip_longest(next_flat_term_iter);
   // Render each of the terms in the explanation
   let flat_strings: Vec<String> = flat_term_and_next
     .map(|flat_term_and_next| {
@@ -337,7 +337,7 @@ fn explain_goal(
             str.push_str(BACKWARD_ARROW);
             str.push(' ');
           }
-          str.push_str(&rule_name);
+          str.push_str(rule_name);
           if let RwDirection::Forward = rw_dir {
             str.push(' ');
             str.push_str(FORWARD_ARROW);
@@ -392,7 +392,7 @@ fn explain_goal(
 }
 
 fn extract_lemma_invocation(
-  rule_str: &String,
+  rule_str: &str,
   rw_dir: &RwDirection,
   curr_term: &FlatTerm<SymbolLang>,
   next_term: &FlatTerm<SymbolLang>,
@@ -401,8 +401,8 @@ fn extract_lemma_invocation(
   let mut lemma_str = String::new();
   let mut rewrite_pos: Vec<i32> = vec![];
   let trace = find_rewritten_term(&mut rewrite_pos, next_term).unwrap();
-  let rewritten_to = get_flat_term_from_trace(&trace, &next_term);
-  let rewritten_from = get_flat_term_from_trace(&trace, &curr_term);
+  let rewritten_to = get_flat_term_from_trace(&trace, next_term);
+  let rewritten_from = get_flat_term_from_trace(&trace, curr_term);
   let lemma: Vec<&str> = rule_str.split(LEMMA_PREFIX).collect::<Vec<&str>>()[1]
     .split(EQUALS)
     .collect();
@@ -430,7 +430,7 @@ fn extract_lemma_invocation(
   add_indentation(&mut lemma_str, depth);
   lemma_str.push_str(USING_LEMMA);
   lemma_str.push(' ');
-  lemma_str.push_str(&rule_str);
+  lemma_str.push_str(rule_str);
 
   // add the lemma arguments
   for (_, value) in lhsmap {
@@ -535,7 +535,7 @@ fn convert_ty(ty: &Sexp) -> String {
         }
       }
       let converted: String = children
-        .into_iter()
+        .iter()
         .map(convert_ty)
         .collect::<Vec<String>>()
         .join(" ");
@@ -545,7 +545,7 @@ fn convert_ty(ty: &Sexp) -> String {
   }
 }
 
-fn extract_ih_arguments(rule_name: &String) -> Vec<String> {
+fn extract_ih_arguments(rule_name: &str) -> Vec<String> {
   rule_name
     .strip_prefix(IH_EQUALITY_PREFIX)
     .unwrap()

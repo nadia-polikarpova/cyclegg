@@ -23,9 +23,8 @@ fn collect_expressions<L: Language, A: Analysis<L>>(
   eclass: Id,
   memo: &mut Denotation<L>,
 ) {
-  if let Some(_) = memo.get(&eclass) {
+  if memo.get(&eclass).is_some() {
     // Already visited
-    return;
   } else {
     // Initialize the memo entry for this eclass with an empty denotation,
     // collect denotations in a separate vector and update the map only at the end;

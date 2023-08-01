@@ -1,5 +1,5 @@
 use egg::*;
-use log::warn;
+
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 use symbolic_expressions::{Sexp, SexpError};
 
@@ -81,7 +81,7 @@ pub const APPLY: &str = "$";
 pub const GUARD_PREFIX: &str = "g_";
 
 pub fn var_depth(var_name: &str) -> usize {
-  var_name.matches("_").count()
+  var_name.matches('_').count()
 }
 
 pub fn is_descendant(var_name: &String, ancestor_name: &String) -> bool {
@@ -112,7 +112,7 @@ where
 pub fn contains_function(sexp: &Sexp) -> bool {
   match sexp {
     Sexp::List(list) => {
-      if list.len() > 0 {
+      if !list.is_empty() {
         if let Sexp::String(str) = &list[0] {
           if !is_constructor(str) {
             return true;
@@ -134,7 +134,7 @@ pub fn resolve_variable(var: &String, ty_splits: &HashMap<String, Sexp>) -> Sexp
   ty_splits
     .get(var)
     .map(|sexp| map_sexp(|v| resolve_variable(v, ty_splits), sexp))
-    .unwrap_or(Sexp::String(var.clone()))
+    .unwrap_or_else(|| Sexp::String(var.clone()))
 }
 
 pub fn fix_singletons(sexp: Sexp) -> Sexp {
@@ -150,7 +150,7 @@ pub fn fix_singletons(sexp: Sexp) -> Sexp {
   }
 }
 
-fn structural_comparison_list(child: &Sexp, ancestors: &Vec<Sexp>) -> StructuralComparison {
+fn structural_comparison_list(child: &Sexp, ancestors: &[Sexp]) -> StructuralComparison {
   let mut ancestor_comparison_results = ancestors
     .iter()
     .map(|ancestor_elem| structural_comparision(child, ancestor_elem));
@@ -223,7 +223,7 @@ pub fn structural_comparision(child: &Sexp, ancestor: &Sexp) -> StructuralCompar
   }
 }
 
-pub fn is_constructor(var_name: &String) -> bool {
+pub fn is_constructor(var_name: &str) -> bool {
   var_name.chars().next().unwrap().is_uppercase()
 }
 
