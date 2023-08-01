@@ -98,9 +98,9 @@ pub enum StructuralComparison {
   Incomparable,
 }
 
-fn map_sexp<F>(f: F, sexp: &Sexp) -> Sexp
+pub fn map_sexp<F>(f: F, sexp: &Sexp) -> Sexp
 where
-  F: Copy + Fn(&String) -> Sexp,
+  F: Copy + Fn(&str) -> Sexp,
 {
   match sexp {
     Sexp::Empty => Sexp::Empty,
@@ -130,11 +130,11 @@ pub fn resolve_sexp(sexp: &Sexp, ty_splits: &HashMap<String, Sexp>) -> Sexp {
 }
 
 /// Requires that there are no cycles in ty_splits (which should be true)
-pub fn resolve_variable(var: &String, ty_splits: &HashMap<String, Sexp>) -> Sexp {
+pub fn resolve_variable(var: &str, ty_splits: &HashMap<String, Sexp>) -> Sexp {
   ty_splits
     .get(var)
     .map(|sexp| map_sexp(|v| resolve_variable(v, ty_splits), sexp))
-    .unwrap_or_else(|| Sexp::String(var.clone()))
+    .unwrap_or_else(|| Sexp::String(var.to_string()))
 }
 
 pub fn fix_singletons(sexp: Sexp) -> Sexp {

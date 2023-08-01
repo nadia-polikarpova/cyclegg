@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use symbolic_expressions::Sexp;
 
-use crate::ast::{Context, Defns, Env, Expr, Type};
+use crate::ast::{Context, Defns, Env, Expr, Type, map_sexp};
 use crate::config::CONFIG;
 use crate::goal::{ProofState, ProofTerm};
 
@@ -247,7 +247,7 @@ fn add_definitions(defns: &Defns, global_context: &Context) -> String {
       };
       defns_str.push_str(EQUALS);
       defns_str.push(' ');
-      defns_str.push_str(&fix_vars(value).to_string());
+      defns_str.push_str(&fix_value(value).to_string());
       defns_str.push('\n');
     }
     defns_str.push('\n');
@@ -447,10 +447,10 @@ fn add_indentation(s: &mut String, depth: usize) {
 fn flat_term_to_sexp(flat_term: &FlatTerm<SymbolLang>) -> Sexp {
   // This is a leaf
   if flat_term.node.children.is_empty() {
-    convert_op(flat_term.node.op)
+    convert_op(&flat_term.node.op.to_string())
   // This is an interior node
   } else {
-    let mut child_sexps: Vec<Sexp> = vec![convert_op(flat_term.node.op)];
+    let mut child_sexps: Vec<Sexp> = vec![convert_op(&flat_term.node.op.to_string())];
     for child in &flat_term.children {
       child_sexps.push(flat_term_to_sexp(child));
     }
@@ -475,6 +475,23 @@ fn extract_rule_name(flat_term: &FlatTerm<SymbolLang>) -> Option<(String, RwDire
   forward.or(backward).or(rule_from_child)
 }
 
+fn convert_op(op_str: &str) -> Sexp {
+  // Special case for converting `$`, which is used internally in cyclegg for
+  // partial application, to the corresponding prefix operator `($)` in
+  // Haskell.
+  if op_str == APPLY {
+    // This is a really ugly hack to wrap `$` in parens.
+    Sexp::List(vec![Sexp::String(op_str.to_string())])
+  } else {
+    Sexp::String(op_str.to_string())
+  }
+}
+
+/// Basically the same as ty.repr.to_string() but we make arrows infix
+fn convert_ty(ty: &Sexp) -> String {
+  fix_arrows(&fix_vars(ty))
+}
+
 fn fix_vars(sexp: &Sexp) -> Sexp {
   match sexp {
     Sexp::Empty => Sexp::Empty,
@@ -496,21 +513,11 @@ fn fix_vars(sexp: &Sexp) -> Sexp {
   }
 }
 
-fn convert_op(op: Symbol) -> Sexp {
-  let op_str = op.to_string();
-  // Special case for converting `$`, which is used internally in cyclegg for
-  // partial application, to the corresponding prefix operator `($)` in
-  // Haskell.
-  if op_str == APPLY {
-    // This is a really ugly hack to wrap `$` in parens.
-    Sexp::List(vec![Sexp::String(op_str)])
-  } else {
-    Sexp::String(op_str)
-  }
+fn fix_value(value: &Sexp) -> Sexp {
+  map_sexp(convert_op, &fix_vars(value))
 }
 
-/// Basically the same as ty.repr.to_string() but we make arrows infix
-fn convert_ty(ty: &Sexp) -> String {
+fn fix_arrows(ty: &Sexp) -> String {
   match ty {
     Sexp::String(str) => str.clone(),
     Sexp::List(children) => {
@@ -519,16 +526,16 @@ fn convert_ty(ty: &Sexp) -> String {
         if let Sexp::String(op) = &children[0] {
           if *op == ARROW {
             if let Sexp::List(args) = children[1].clone() {
-              let mut arg_tys: Vec<String> = args.iter().map(convert_ty).collect();
-              let return_ty = convert_ty(&children[2]);
+              let mut arg_tys: Vec<String> = args.iter().map(fix_arrows).collect();
+              let return_ty = fix_arrows(&children[2]);
               arg_tys.push(return_ty);
               return format!("({})", arg_tys.join(JOINING_ARROW));
             } else {
               return format!(
                 "({} {} {})",
-                convert_ty(&children[1]),
+                fix_arrows(&children[1]),
                 ARROW,
-                convert_ty(&children[2])
+                fix_arrows(&children[2])
               );
             }
           }
@@ -536,7 +543,7 @@ fn convert_ty(ty: &Sexp) -> String {
       }
       let converted: String = children
         .iter()
-        .map(convert_ty)
+        .map(fix_arrows)
         .collect::<Vec<String>>()
         .join(" ");
       format!("({})", converted)
