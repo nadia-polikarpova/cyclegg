@@ -1,6 +1,6 @@
+use clap::Parser;
 use lazy_static::lazy_static;
 use log::Level;
-use clap::Parser;
 
 #[derive(Parser)]
 pub struct Args {
@@ -54,7 +54,11 @@ impl Config {
       split_conditionals: !args.no_cond_split,
       single_rhs: args.single_rhs,
       irreducible_only: args.irreducible_only,
-      timeout: if args.timeout == 0 { None } else { Some(args.timeout) },
+      timeout: if args.timeout == 0 {
+        None
+      } else {
+        Some(args.timeout)
+      },
       log_level: args.log_level.parse().unwrap(),
       save_graphs: args.save_graphs,
       save_results: args.save_results,
@@ -65,7 +69,7 @@ impl Config {
   }
 }
 
-lazy_static!{
+lazy_static! {
   pub static ref ARGS: Args = Args::parse();
   pub static ref CONFIG: Config = Config::from_args(&ARGS);
 }

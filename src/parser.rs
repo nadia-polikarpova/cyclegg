@@ -1,25 +1,27 @@
+use egg::*;
+use std::collections::{HashMap, HashSet};
 use std::{char, clone};
-use std::{collections::{HashSet, HashMap}};
 use symbolic_expressions::*;
-use egg::{*};
 
 use crate::ast::*;
-use crate::goal::{*};
+use crate::goal::*;
 
 fn make_rewrites_from_denfs(defns: &Defns) -> Vec<Rw> {
-    defns.iter().flat_map(|(name, cases)|
-        cases.iter().map(|(pattern, rewrite)| {
+  defns
+    .iter()
+    .flat_map(|(name, cases)| {
+      cases
+        .iter()
+        .map(|(pattern, rewrite)| {
           let name_sexp = Sexp::String(name.clone());
           let pattern_with_name = match pattern {
             Sexp::Empty => name_sexp,
             Sexp::List(args) => {
-              let mut new_list = vec!(name_sexp);
+              let mut new_list = vec![name_sexp];
               new_list.extend(args.iter().cloned());
               Sexp::List(new_list)
             }
-            arg @ Sexp::String(_) => {
-              Sexp::List(vec!(name_sexp, arg.clone()))
-            }
+            arg @ Sexp::String(_) => Sexp::List(vec![name_sexp, arg.clone()]),
           };
           let lhs = pattern_with_name.to_string();
           let rhs = rewrite.to_string();
@@ -28,9 +30,11 @@ fn make_rewrites_from_denfs(defns: &Defns) -> Vec<Rw> {
           let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
           let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
           Rewrite::new(lhs, searcher, applier).unwrap()
-        }).collect::<Vec<Rw>>())
-                .collect()
-  }
+        })
+        .collect::<Vec<Rw>>()
+    })
+    .collect()
+}
 
 #[derive(Default)]
 struct ParserState {
@@ -49,7 +53,11 @@ impl ParserState {
     let mut used_defs = vec![];
     let mut worklist = vec![];
     for expr in exprs {
-      let expr_as_nodes_or_var: Vec<ENodeOrVar<SymbolLang>> = expr.as_ref().into_iter().map(|n| ENodeOrVar::ENode(n.clone())).collect();
+      let expr_as_nodes_or_var: Vec<ENodeOrVar<SymbolLang>> = expr
+        .as_ref()
+        .into_iter()
+        .map(|n| ENodeOrVar::ENode(n.clone()))
+        .collect();
       let expr_as_pattern: PatternAst<SymbolLang> = PatternAst::from(expr_as_nodes_or_var);
       self.add_functions(&expr_as_pattern, &mut used_names, &mut worklist);
     }
@@ -65,11 +73,19 @@ impl ParserState {
   }
 
   /// Add all functions mentioned in e to used_names and worklist.
-  fn add_functions(&self, e: &PatternAst<SymbolLang>, used_names: &mut HashSet<Symbol>, worklist: &mut Vec<Symbol>) {
+  fn add_functions(
+    &self,
+    e: &PatternAst<SymbolLang>,
+    used_names: &mut HashSet<Symbol>,
+    worklist: &mut Vec<Symbol>,
+  ) {
     for node_or_var in e.as_ref() {
       if let ENodeOrVar::ENode(node) = node_or_var {
         let s = node.op;
-        if self.context.contains_key(&s) && !is_constructor(&s.to_string()) && !used_names.contains(&s) {
+        if self.context.contains_key(&s)
+          && !is_constructor(&s.to_string())
+          && !used_names.contains(&s)
+        {
           used_names.insert(s);
           worklist.push(s);
         }
@@ -82,7 +98,7 @@ impl ParserState {
     format!("apply-{}", name)
   }
 
-  /// Return all rules that define the function name, 
+  /// Return all rules that define the function name,
   /// including the rule that defines conversion from partial to first-order application.
   fn definition(&self, name: &Symbol) -> Vec<&Rw> {
     let mut res = Vec::new();
@@ -112,16 +128,25 @@ impl ParserState {
     } else {
       let wildcard = |i: usize| format!("?x{}", i).parse().unwrap();
       // RHS is a full first-order application of name to as many wildcards as there are arguments:
-      let rhs: Pat = format!("({} {})", name, (0 .. args.len()).map(wildcard).collect::<Vec<String>>().join(" ")).parse().unwrap();
+      let rhs: Pat = format!(
+        "({} {})",
+        name,
+        (0..args.len())
+          .map(wildcard)
+          .collect::<Vec<String>>()
+          .join(" ")
+      )
+      .parse()
+      .unwrap();
       // LHS is looks like this "($ ... ($ name ?x0) ... ?xn)":
       let mut lhs_str: String = format!("({} {} ?x0)", APPLY, name);
-      for i in (0 .. args.len()).skip(1) {
+      for i in (0..args.len()).skip(1) {
         lhs_str = format!("({} {} ?x{})", APPLY, lhs_str, i);
       }
       let lhs: Pat = lhs_str.parse().unwrap();
       Some(Rewrite::new(ParserState::part_app_rule(name), lhs, rhs).unwrap())
     }
-  }  
+  }
 }
 
 fn validate_identifier(identifier: &String) {
@@ -154,22 +179,30 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let mut cons_index = 2;
         // We'll allow no type variables to be given, in which case the second
         // argument must be the constructor list.
-        let type_var_names =
-          if decl.list()?.len() == 3 {
-            vec!()
-          } else {
-            // The length should be 4.
-            assert_eq!(decl.list()?.len(), 4);
-            cons_index += 1;
-            let type_vars = decl.list()?[2].list()?;
-            type_vars.iter().map(|x| x.string().map(|s| s.clone()))
-                            .collect::<Result<Vec<String>, SexpError>>()?
-          };
+        let type_var_names = if decl.list()?.len() == 3 {
+          vec![]
+        } else {
+          // The length should be 4.
+          assert_eq!(decl.list()?.len(), 4);
+          cons_index += 1;
+          let type_vars = decl.list()?[2].list()?;
+          type_vars
+            .iter()
+            .map(|x| x.string().map(|s| s.clone()))
+            .collect::<Result<Vec<String>, SexpError>>()?
+        };
         let cons = decl.list()?[cons_index].list()?;
-        let cons_symbs: Vec<Symbol> = cons.iter().map(|x| Symbol::from(x.string().unwrap())).collect();
+        let cons_symbs: Vec<Symbol> = cons
+          .iter()
+          .map(|x| Symbol::from(x.string().unwrap()))
+          .collect();
         validate_datatype(&name);
-        cons_symbs.iter().for_each(|name| validate_datatype(&name.to_string()));
-        state.env.insert(Symbol::from(name), (type_var_names, cons_symbs));
+        cons_symbs
+          .iter()
+          .for_each(|name| validate_datatype(&name.to_string()));
+        state
+          .env
+          .insert(Symbol::from(name), (type_var_names, cons_symbs));
       }
       "::" => {
         // This is a type binding: parse name and type:
@@ -177,7 +210,7 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         // This could be either a function or a datatype.
         validate_identifier(&name.to_string());
         let type_ = Type::new(decl.list()?[2].clone());
-        if let Some(rw) = ParserState::partial_application(&name, &type_) {          
+        if let Some(rw) = ParserState::partial_application(&name, &type_) {
           state.rules.push(rw);
         }
         state.context.insert(name, type_);
@@ -193,7 +226,7 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         if let Some(cases) = state.defns.get_mut(name) {
           cases.push((args, value));
         } else {
-          state.defns.insert(name.clone(), vec!((args, value)));
+          state.defns.insert(name.clone(), vec![(args, value)]);
         }
       }
       "===" => {
@@ -204,11 +237,22 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         // hopefully never happen.
         let name = decl.list()?[1].string()?;
         let param_name_list = decl.list()?[2].list()?;
-        let param_names: Vec<Symbol> = param_name_list.iter().map(|x| Symbol::from(x.string().unwrap())).collect();
-        param_names.iter().for_each(|param| validate_variable(&param.to_string()));
+        let param_names: Vec<Symbol> = param_name_list
+          .iter()
+          .map(|x| Symbol::from(x.string().unwrap()))
+          .collect();
+        param_names
+          .iter()
+          .for_each(|param| validate_variable(&param.to_string()));
         let param_type_list = decl.list()?[3].list()?;
-        let param_types: Vec<Type> = param_type_list.iter().map(|x| Type::new(x.clone())).collect();
-        let params = param_names.into_iter().zip(param_types.into_iter()).collect();
+        let param_types: Vec<Type> = param_type_list
+          .iter()
+          .map(|x| Type::new(x.clone()))
+          .collect();
+        let params = param_names
+          .into_iter()
+          .zip(param_types.into_iter())
+          .collect();
 
         let lhs_sexp: Sexp = decl.list()?[4].clone();
         let rhs_sexp: Sexp = decl.list()?[5].clone();
@@ -216,8 +260,18 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let rhs: Expr = rhs_sexp.to_string().parse().unwrap();
         let rules = &mut state.used_definitions(vec![&lhs, &rhs]);
         rules.extend(make_rewrites_from_denfs(&state.defns));
-        let goal = Goal::top(name, lhs, lhs_sexp, rhs, rhs_sexp, params,
-                             &state.env, &state.context, rules, state.defns.clone());
+        let goal = Goal::top(
+          name,
+          lhs,
+          lhs_sexp,
+          rhs,
+          rhs_sexp,
+          params,
+          &state.env,
+          &state.context,
+          rules,
+          state.defns.clone(),
+        );
         state.goals.push(goal);
       }
       "//" => {
