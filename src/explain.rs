@@ -4,10 +4,9 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use itertools::{Itertools, EitherOrBoth};
 
-use crate::ast::{Type, Expr, Env, Context};
+use crate::ast::{Type, Expr, Env, Context, Defns};
 use crate::goal::{ProofState, ProofTerm};
 use crate::config::CONFIG;
-use crate::parser::Defn;
 
 /// Constants from (Liquid)Haskell
 const EQUALS: &str = "=";
@@ -49,10 +48,9 @@ enum RwDirection {
     Backward
 }
 
-// TODO: Add functions and data declarations
 pub fn explain_top(goal: String, state: &mut ProofState, lhs: Expr, rhs: Expr,
                    params: Vec<String>, top_level_vars: HashMap<Symbol, Type>,
-                   defns: Vec<Defn>, env: Env, global_context: Context) -> String {
+                   defns: Defns, env: Env, global_context: Context) -> String {
     let mut str_explanation = String::new();
 
     // Haskell pragmas
@@ -183,7 +181,7 @@ fn add_data_definitions(env: &Env, global_context: &Context) -> String {
     data_defns_str
 }
 
-fn add_definitions(defns: &Vec<Defn>, global_context: &Context) -> String {
+fn add_definitions(defns: &Defns, global_context: &Context) -> String {
     let mut defns_str = String::new();
 
     // The definition will look like
@@ -192,26 +190,26 @@ fn add_definitions(defns: &Vec<Defn>, global_context: &Context) -> String {
     // listLen :: List a -> Natural
     // listLen Nil = Z
     // listLen (Cons x xs) = S (listLen xs)
-    for defn in defns.iter() {
+    for (name, cases) in defns.iter() {
         // {-@ reflect DEFN_NAME @-}
         defns_str.push_str(LH_ANNOT_BEGIN);
         defns_str.push(' ');
         defns_str.push_str(LH_REFLECT);
         defns_str.push(' ');
-        defns_str.push_str(&defn.name);
+        defns_str.push_str(name);
         defns_str.push(' ');
         defns_str.push_str(LH_ANNOT_END);
         defns_str.push('\n');
 
         // DEFN_NAME :: DEFN_TYPE
-        defns_str.push_str(&defn.name);
+        defns_str.push_str(name);
         defns_str.push_str(JOINING_HAS_TYPE);
         // Hacky conversion to symbol to extract from the global context
-        defns_str.push_str(&convert_ty(&global_context[&Symbol::from_str(&defn.name).unwrap()].repr));
+        defns_str.push_str(&convert_ty(&global_context[&Symbol::from_str(name).unwrap()].repr));
         defns_str.push('\n');
 
-        for (args, value) in defn.cases.iter() {
-            defns_str.push_str(&defn.name);
+        for (args, value) in cases.iter() {
+            defns_str.push_str(name);
             defns_str.push(' ');
             // This match is necessary to strip the parens
             match fix_vars(args) {

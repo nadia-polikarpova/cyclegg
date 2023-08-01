@@ -244,6 +244,9 @@ pub type Env = HashMap<Symbol, (Vec<String>, Vec<Symbol>)>;
 // Type context
 pub type Context = HashMap<Symbol, Type>;
 
+// Function definitions
+pub type Defns = HashMap<String, Vec<(Sexp, Sexp)>>;
+
 pub fn mk_context(descr: &[(&str, &str)]) -> Context {
   let mut ctx = Context::new();
   for (name, ty) in descr {

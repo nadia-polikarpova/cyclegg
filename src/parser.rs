@@ -1,56 +1,43 @@
 use std::{char, clone};
-use std::{collections::HashSet};
+use std::{collections::{HashSet, HashMap}};
 use symbolic_expressions::*;
 use egg::{*};
 
 use crate::ast::*;
 use crate::goal::{*};
 
-#[derive(Clone, Debug)]
-pub struct Defn {
-  pub name: String,
-  pub cases: Vec<(Sexp, Sexp)>
-}
-
-impl Defn {
-  pub fn new(name: String, cases: Vec<(Sexp, Sexp)>) -> Self {
-    Self {
-      name,
-      cases
-    }
+fn make_rewrites_from_denfs(defns: &Defns) -> Vec<Rw> {
+    defns.iter().flat_map(|(name, cases)|
+        cases.iter().map(|(pattern, rewrite)| {
+          let name_sexp = Sexp::String(name.clone());
+          let pattern_with_name = match pattern {
+            Sexp::Empty => name_sexp,
+            Sexp::List(args) => {
+              let mut new_list = vec!(name_sexp);
+              new_list.extend(args.iter().cloned());
+              Sexp::List(new_list)
+            }
+            arg @ Sexp::String(_) => {
+              Sexp::List(vec!(name_sexp, arg.clone()))
+            }
+          };
+          let lhs = pattern_with_name.to_string();
+          let rhs = rewrite.to_string();
+          validate_identifier(&lhs);
+          validate_identifier(&rhs);
+          let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
+          let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
+          Rewrite::new(lhs, searcher, applier).unwrap()
+        }).collect::<Vec<Rw>>())
+                .collect()
   }
-
-  pub fn make_rewrites(&self) -> Vec<Rw> {
-    self.cases.iter().map(|(pattern, rewrite)|{
-      let name_sexp = Sexp::String(self.name.clone());
-      let pattern_with_name = match pattern {
-        Sexp::Empty => name_sexp,
-        Sexp::List(args) => {
-          let mut new_list = vec!(name_sexp);
-          new_list.extend(args.iter().cloned());
-          Sexp::List(new_list)
-        }
-        arg @ Sexp::String(_) => {
-          Sexp::List(vec!(name_sexp, arg.clone()))
-        }
-      };
-      let lhs = pattern_with_name.to_string();
-      let rhs = rewrite.to_string();
-      validate_identifier(&lhs);
-      validate_identifier(&rhs);
-      let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
-      let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
-      Rewrite::new(lhs, searcher, applier).unwrap()
-    }).collect()
-  }
-}
 
 #[derive(Default)]
 struct ParserState {
   env: Env,
   context: Context,
+  defns: Defns,
   rules: Vec<Rw>,
-  defns: Vec<Defn>,
   goals: Vec<Goal>,
 }
 
@@ -197,18 +184,17 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
       }
       "let" => {
         // This is a definition
-        let name = decl.list()?[1].to_string();
-        validate_variable(&name);
-        // Extract the LHS and RHS
-        let cases = decl.list()?[2].list()?.iter().map(|sexp| {
-          let case = sexp.list()?;
-          println!("{:?}", case);
-          assert_eq!(case.len(), 2);
-          Ok((case[0].clone(), case[1].clone()))
-        }).collect::<Result<Vec<(Sexp, Sexp)>, SexpError>>()?;
-        let defn = Defn::new(name, cases);
-        state.rules.extend(defn.make_rewrites());
-        state.defns.push(defn);
+        let name = decl.list()?[1].string()?;
+        validate_variable(name);
+        // Extract the args and value
+        let args = decl.list()?[2].clone();
+        let value = decl.list()?[3].clone();
+        // Add to the hashmap
+        if let Some(cases) = state.defns.get_mut(name) {
+          cases.push((args, value));
+        } else {
+          state.defns.insert(name.clone(), vec!((args, value)));
+        }
       }
       "===" => {
         // This is a goal: parse name, parameter names, parameter types, lhs, and rhs:
@@ -228,7 +214,8 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let rhs_sexp: Sexp = decl.list()?[5].clone();
         let lhs: Expr = lhs_sexp.to_string().parse().unwrap();
         let rhs: Expr = rhs_sexp.to_string().parse().unwrap();
-        let rules = &state.used_definitions(vec![&lhs, &rhs]);
+        let rules = &mut state.used_definitions(vec![&lhs, &rhs]);
+        rules.extend(make_rewrites_from_denfs(&state.defns));
         let goal = Goal::top(name, lhs, lhs_sexp, rhs, rhs_sexp, params,
                              &state.env, &state.context, rules, state.defns.clone());
         state.goals.push(goal);

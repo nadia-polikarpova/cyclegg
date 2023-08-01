@@ -8,7 +8,6 @@ use std::time::{Instant, Duration};
 use crate::ast::{*};
 use crate::egraph::{*};
 use crate::config::{*};
-use crate::parser::Defn;
 
 // We will use SymbolLang with no analysis for now
 pub type Eg = EGraph<SymbolLang, ()>;
@@ -386,7 +385,7 @@ pub struct Goal {
   /// Global context (i.e. constructors and top-level bindings)
   pub global_context: Context,
   /// Definitions in a form amenable to proof emission
-  pub defns: Vec<Defn>,
+  pub defns: Defns,
 }
 
 impl Goal {
@@ -401,7 +400,7 @@ impl Goal {
     env: &Env,
     global_context: &Context,
     reductions: &[Rw],
-    defns: Vec<Defn>,
+    defns: Defns,
   ) -> Self {
     let mut egraph: Eg = EGraph::default().with_explanations_enabled();
     egraph.add_expr(&lhs);
