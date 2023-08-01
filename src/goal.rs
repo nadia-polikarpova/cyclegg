@@ -8,6 +8,7 @@ use std::time::{Instant, Duration};
 use crate::ast::{*};
 use crate::egraph::{*};
 use crate::config::{*};
+use crate::parser::Defn;
 
 // We will use SymbolLang with no analysis for now
 pub type Eg = EGraph<SymbolLang, ()>;
@@ -312,7 +313,6 @@ fn instantiate_new_ih_equalities(egraph: &mut Eg, prev_instantiations: &mut Vec<
   }).collect();
   for new_instantiation in new_instantiations.iter() {
     let resolved_instantiation = resolve_instantiation(new_instantiation);
-    // println!("original instantiation: {:?}", new_instantiation);
     // println!("resolved instantiation: {:?}", resolved_instantiation);
     // .to_string().parse().unwrap() converts from sexp to RecExpr<ENodeOrVar<SymbolLang>>
     let new_lhs = resolve_sexp(lhs, &resolved_instantiation).to_string().parse().unwrap();
@@ -320,7 +320,13 @@ fn instantiate_new_ih_equalities(egraph: &mut Eg, prev_instantiations: &mut Vec<
     // println!("new lhs: {}, new rhs: {}", &new_lhs, &new_rhs);
     // The instantiation as a string
     let instantiation_str = params.iter().map(|param| {
-      format!("{}={}", param, resolved_instantiation[param])
+      format!("{}={}",
+              param,
+              resolved_instantiation
+                .get(param)
+                // If the parameter isn't instantiated to anything,
+                // we can assume that it is unchanged.
+                .unwrap_or(&Sexp::String(param.clone())))
     }).collect::<Vec<String>>().join(",");
     egraph.union_instantiations(&new_lhs, &new_rhs, &Subst::default(), format!("ih-equality-{}", instantiation_str));
   }
@@ -376,9 +382,11 @@ pub struct Goal {
   pub rhs_sexp: Sexp,
   pub rhs_id: Id,
   /// Environment
-  env: Env,
+  pub env: Env,
   /// Global context (i.e. constructors and top-level bindings)
-  global_context: Context,
+  pub global_context: Context,
+  /// Definitions in a form amenable to proof emission
+  pub defns: Vec<Defn>,
 }
 
 impl Goal {
@@ -392,7 +400,8 @@ impl Goal {
     params: Vec<(Symbol, Type)>,
     env: &Env,
     global_context: &Context,
-    reductions: &[Rw],    
+    reductions: &[Rw],
+    defns: Vec<Defn>,
   ) -> Self {
     let mut egraph: Eg = EGraph::default().with_explanations_enabled();
     egraph.add_expr(&lhs);
@@ -429,6 +438,7 @@ impl Goal {
       rhs_id,
       env: env.clone(),
       global_context: global_context.clone(),
+      defns,
     };
     for (name, ty) in params {
       res.add_scrutinee(name, &ty, 0);
@@ -463,6 +473,8 @@ impl Goal {
         rhs_id: self.rhs_id,
         env: self.env.clone(),
         global_context: self.global_context.clone(),
+        // NOTE: We don't really need to clone this.
+        defns: self.defns.clone(),
       }
   }
 
@@ -731,7 +743,7 @@ impl Goal {
     // Convert to datatype name
     let dt = Symbol::from(ty.datatype().unwrap());
     // Get the constructors of the datatype
-    let cons = self.env.get(&dt).unwrap();
+    let (_, cons) = self.env.get(&dt).unwrap();
     // We will add this to state.proof to describe the case split.
     let mut instantiated_cons_and_goals: Vec<(String, String)> = vec!();
     // For each constructor, create a new goal and push it onto the proof state
@@ -763,6 +775,7 @@ impl Goal {
         rhs_sexp: self.rhs_sexp.clone(),
         env: self.env.clone(),
         global_context: self.global_context.clone(),
+        defns: self.defns.clone(),
       };      
 
       // Get the types of constructor arguments
@@ -887,11 +900,11 @@ impl Goal {
     }
     // We split on var into the various instantiated constructors and subgoals.
     //
-    // If the var begins with "g-", it is an ITE split and we will add the
-    // condition that was split on to our proof term. This is necessary
-    // because for ITE splits we introduce a new variable that we bind
-    // an expression to.
-    if var_str.starts_with("g-") {
+    // If the var begins with the guard prefix, it is an ITE split and we will
+    // add the condition that was split on to our proof term. This is necessary
+    // because for ITE splits we introduce a new variable that we bind an
+    // expression to.
+    if var_str.starts_with(GUARD_PREFIX) {
       // There should only be two cases.
       assert_eq!(instantiated_cons_and_goals.len(), 2);
       state.proof.insert(self.name, ProofTerm::ITESplit(var_str.clone(), self.guard_exprs[&var_str].clone(), instantiated_cons_and_goals));

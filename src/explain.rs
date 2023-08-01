@@ -1,11 +1,13 @@
 use egg::*;
 use symbolic_expressions::Sexp;
 use std::collections::HashMap;
+use std::str::FromStr;
 use itertools::{Itertools, EitherOrBoth};
 
-use crate::ast::{Type, Expr};
+use crate::ast::{Type, Expr, Env, Context};
 use crate::goal::{ProofState, ProofTerm};
 use crate::config::CONFIG;
+use crate::parser::Defn;
 
 /// Constants from (Liquid)Haskell
 const EQUALS: &str = "=";
@@ -15,11 +17,23 @@ const AND_THEN: &str = "***";
 const QED: &str = "QED";
 const TAB_WIDTH: usize = 2;
 const PROOF: &str = "Proof";
+const DATA: &str = "data";
+const WHERE: &str = "where";
+const MODULE: &str = "module";
 
-const LH_TYPE_BEGIN: &str = "{-@";
-const LH_TYPE_END: &str = "@-}";
+const PRAGMA_GADT_SYNTAX: &str = "{-# LANGUAGE GADTSyntax #-}";
+const PRAGMA_LH_REFLECTION: &str = "{-@ LIQUID \"--reflection\" @-}";
+const PRAGMA_LH_PLE: &str = "{-@ LIQUID \"--ple\" @-}";
+const IMPORT_LH_EQUATIONAL: &str = "import Language.Haskell.Liquid.Equational";
+
+const LH_ANNOT_BEGIN: &str = "{-@";
+const LH_ANNOT_END: &str = "@-}";
+const LH_REFLECT: &str = "reflect";
 const COMMENT: &str = "--";
-const HAS_TYPE: &str = "::";
+// const HAS_TYPE: &str = "::";
+// For adding nice spacing.
+const JOINING_HAS_TYPE: &str = " :: ";
+const JOINING_ARROW: &str = " -> ";
 
 /// Constants from cyclegg
 const APPLY: &str = "$";
@@ -36,37 +50,78 @@ enum RwDirection {
 }
 
 // TODO: Add functions and data declarations
-pub fn explain_top(goal: String, state: &mut ProofState, lhs: Expr, rhs: Expr, top_level_vars: HashMap<Symbol, Type>) -> String {
+pub fn explain_top(goal: String, state: &mut ProofState, lhs: Expr, rhs: Expr,
+                   params: Vec<String>, top_level_vars: HashMap<Symbol, Type>,
+                   defns: Vec<Defn>, env: Env, global_context: Context) -> String {
     let mut str_explanation = String::new();
-    // (arg name, arg type)
+
+    // Haskell pragmas
+    str_explanation.push_str(PRAGMA_GADT_SYNTAX);
+    str_explanation.push('\n');
+    str_explanation.push_str(PRAGMA_LH_REFLECTION);
+    str_explanation.push('\n');
+    str_explanation.push_str(PRAGMA_LH_PLE);
+    str_explanation.push('\n');
+    str_explanation.push('\n');
+
+    // Haskell module declaration + imports
+    str_explanation.push_str(MODULE);
+    str_explanation.push(' ');
+    // Some hacky junk to capitalize the first character of the goal.
+    let mut goal_chars = goal.chars();
+    let goal_first_char = goal_chars.next().unwrap();
+    str_explanation.push(goal_first_char.to_ascii_uppercase());
+    goal_chars.for_each(|c| str_explanation.push(c));
+    str_explanation.push(' ');
+    str_explanation.push_str(WHERE);
+    str_explanation.push('\n');
+    str_explanation.push_str(IMPORT_LH_EQUATIONAL);
+    str_explanation.push('\n');
+    str_explanation.push('\n');
+
+    // Haskell data declarations
+    str_explanation.push_str(&add_data_definitions(&env, &global_context));
+
+    // Haskell definitions
+    str_explanation.push_str(&add_definitions(&defns, &global_context));
+
+    // (arg name, arg type), to be used in creating the type.
     let args: Vec<(String, String)> =
-        top_level_vars.into_iter().map(|(symbol, ty)| (symbol.to_string(), convert_ty(ty.repr))).collect();
+        params.into_iter()
+              .map(|param|
+                   (param.clone(), convert_ty(&top_level_vars[&Symbol::from(&param)].repr)))
+              .collect();
+    // println!("{:?}", args);
 
     // LH type
-    str_explanation.push_str(LH_TYPE_BEGIN);
+    str_explanation.push_str(LH_ANNOT_BEGIN);
+    str_explanation.push(' ');
     str_explanation.push_str(&goal);
-    str_explanation.push_str(HAS_TYPE);
+    str_explanation.push_str(JOINING_HAS_TYPE);
     // Join with arrows each of the arguments
     let args_str = args.iter()
                        .map(|(arg_name, arg_ty)| format!("{}: {}", arg_name, arg_ty))
-                       .collect::<Vec<String>>().join(ARROW);
+                       .collect::<Vec<String>>().join(JOINING_ARROW);
     str_explanation.push_str(&args_str);
     // Refined type of the proof
     let proof_str = format!("{{ {} = {} }}", lhs, rhs);
-    str_explanation.push_str(ARROW);
+    str_explanation.push_str(JOINING_ARROW);
     str_explanation.push_str(&proof_str);
-    str_explanation.push_str(LH_TYPE_END);
+    str_explanation.push(' ');
+    str_explanation.push_str(LH_ANNOT_END);
     str_explanation.push('\n');
 
     // Haskell type
     str_explanation.push_str(&goal);
-    str_explanation.push_str(HAS_TYPE);
+    str_explanation.push_str(JOINING_HAS_TYPE);
     // Same deal as with the LH type but now we just include the types
     let arg_tys_str = args.iter()
                        .map(|(_, arg_ty)| arg_ty.to_string())
-                       .collect::<Vec<String>>().join(ARROW);
+                       .collect::<Vec<String>>().join(JOINING_ARROW);
     str_explanation.push_str(&arg_tys_str);
-    str_explanation.push_str(ARROW);
+    if !args.is_empty() {
+        str_explanation.push_str(JOINING_ARROW);
+    }
     // This time we just use the Proof type
     str_explanation.push_str(&PROOF);
     str_explanation.push('\n');
@@ -79,6 +134,9 @@ pub fn explain_top(goal: String, state: &mut ProofState, lhs: Expr, rhs: Expr, t
                        .map(|(arg_name, _)| arg_name.to_string())
                        .collect::<Vec<String>>().join(" ");
     str_explanation.push_str(&arg_names_str);
+    if !args.is_empty() {
+        str_explanation.push(' ');
+    }
     str_explanation.push_str(&EQUALS);
     str_explanation.push('\n');
 
@@ -86,6 +144,96 @@ pub fn explain_top(goal: String, state: &mut ProofState, lhs: Expr, rhs: Expr, t
     let proof_exp = explain_proof(1, goal.clone(), state, &goal);
     str_explanation.push_str(&proof_exp);
     str_explanation
+}
+
+fn add_data_definitions(env: &Env, global_context: &Context) -> String {
+    let mut data_defns_str = String::new();
+
+    // The definition will look like
+    //
+    // data List a where
+    //   Nil :: List a
+    //   Cons :: a -> List a -> List a
+    //
+    // We will use GADTSyntax for convenience
+    for (datatype, (type_vars, constrs)) in env.iter() {
+        // data DATATYPE where
+        data_defns_str.push_str(DATA);
+        data_defns_str.push(' ');
+        data_defns_str.push_str(&datatype.to_string());
+        data_defns_str.push(' ');
+        if !type_vars.is_empty() {
+            data_defns_str.push_str(&type_vars.join(" "));
+            data_defns_str.push(' ');
+        }
+        data_defns_str.push_str(WHERE);
+        data_defns_str.push('\n');
+
+        // CONSTRUCTOR :: CONSTRUCTOR_TYPE
+        for constr in constrs {
+            add_indentation(&mut data_defns_str, 1);
+            data_defns_str.push_str(&constr.to_string());
+            data_defns_str.push_str(JOINING_HAS_TYPE);
+            data_defns_str.push_str(&convert_ty(&global_context[&constr].repr));
+            data_defns_str.push('\n');
+        }
+        data_defns_str.push('\n');
+    }
+
+    data_defns_str
+}
+
+fn add_definitions(defns: &Vec<Defn>, global_context: &Context) -> String {
+    let mut defns_str = String::new();
+
+    // The definition will look like
+    //
+    // {-@ reflect listLen @-}
+    // listLen :: List a -> Natural
+    // listLen Nil = Z
+    // listLen (Cons x xs) = S (listLen xs)
+    for defn in defns.iter() {
+        // {-@ reflect DEFN_NAME @-}
+        defns_str.push_str(LH_ANNOT_BEGIN);
+        defns_str.push(' ');
+        defns_str.push_str(LH_REFLECT);
+        defns_str.push(' ');
+        defns_str.push_str(&defn.name);
+        defns_str.push(' ');
+        defns_str.push_str(LH_ANNOT_END);
+        defns_str.push('\n');
+
+        // DEFN_NAME :: DEFN_TYPE
+        defns_str.push_str(&defn.name);
+        defns_str.push_str(JOINING_HAS_TYPE);
+        // Hacky conversion to symbol to extract from the global context
+        defns_str.push_str(&convert_ty(&global_context[&Symbol::from_str(&defn.name).unwrap()].repr));
+        defns_str.push('\n');
+
+        for (args, value) in defn.cases.iter() {
+            defns_str.push_str(&defn.name);
+            defns_str.push(' ');
+            // This match is necessary to strip the parens
+            match fix_vars(args) {
+                Sexp::Empty => {},
+                Sexp::String(arg) => {
+                    defns_str.push_str(&arg);
+                    defns_str.push(' ');
+                },
+                Sexp::List(args) => {
+                    defns_str.push_str(&args.iter().map(|arg| arg.to_string()).join(" "));
+                    defns_str.push(' ');
+                },
+            };
+            defns_str.push_str(EQUALS);
+            defns_str.push(' ');
+            defns_str.push_str(&fix_vars(value).to_string());
+            defns_str.push('\n');
+        }
+        defns_str.push('\n');
+    }
+
+    defns_str
 }
 
 fn explain_proof(depth: usize, goal: String, state: &mut ProofState, top_goal_name: &String) -> String {
@@ -140,19 +288,30 @@ fn explain_goal(depth: usize, explanation: &mut Explanation<SymbolLang>, top_goa
         };
         let mut str = String::new();
         if CONFIG.verbose_proofs {
-            if let Some(rule_name) = &extract_rule_name(flat_term) {
+            if let Some((rule_name, rw_dir)) = &extract_rule_name(flat_term) {
                 add_indentation(&mut str, depth);
                 str.push_str(COMMENT);
                 str.push(' ');
+                if let RwDirection::Backward = rw_dir {
+                    str.push_str(BACKWARD_ARROW);
+                    str.push(' ');
+                }
                 str.push_str(&rule_name);
+                if let RwDirection::Forward = rw_dir {
+                    str.push(' ');
+                    str.push_str(FORWARD_ARROW);
+                }
                 str.push('\n')
             }
         }
         add_indentation(&mut str, depth);
         str.push_str(&flat_term_to_sexp(flat_term).to_string());
         if let Some(next_term) = next_term_opt {
-            if let Some(rule_name) = &extract_rule_name(next_term) {
+            // We don't care about the direction of the rewrite because both
+            // directions are justified by the equality from the IH.
+            if let Some((rule_name, _)) = &extract_rule_name(next_term) {
                 if rule_name.starts_with(IH_EQUALITY) {
+                    str.push('\n');
                     let args = extract_ih_arguments(rule_name);
                     add_indentation(&mut str, depth);
                     str.push_str(USING_LEMMA);
@@ -203,13 +362,35 @@ fn flat_term_to_sexp(flat_term: &FlatTerm<SymbolLang>) -> Sexp {
     }
 }
 
-// TODO: return a custom struct indicating what direction it is and
-// use that to determine where to put the lemma invocation.
-fn extract_rule_name(flat_term: &FlatTerm<SymbolLang>) -> Option<String> {
-    let forward = flat_term.forward_rule.map(|rule| rule.to_string() + " " + FORWARD_ARROW);
-    let backward = flat_term.backward_rule.map(|rule| BACKWARD_ARROW.to_string() + " " + &rule.to_string());
-    let rule_from_child = flat_term.children.iter().map(extract_rule_name).collect();
+fn extract_rule_name(flat_term: &FlatTerm<SymbolLang>) -> Option<(String, RwDirection)> {
+    let forward = flat_term.forward_rule.map(|rule| (rule.to_string(), RwDirection::Forward));
+    let backward = flat_term.backward_rule.map(|rule| (rule.to_string(), RwDirection::Backward));
+    // Find the first Some
+    let rule_from_child = flat_term.children.iter().map(extract_rule_name).find(Option::is_some).flatten();
     forward.or(backward).or(rule_from_child)
+}
+
+fn fix_vars(sexp: &Sexp) -> Sexp {
+    match sexp {
+        Sexp::Empty => Sexp::Empty,
+        Sexp::String(s) => {
+            let mut new_s = String::new();
+            let mut s_chars = s.chars();
+            if let Some(c) = s_chars.next() {
+                match c {
+                    // Skip a question mark prefix on a var
+                    '?' => {},
+                    _   => new_s.push(c),
+                };
+            }
+            // Add the rest
+            new_s.push_str(s_chars.as_str());
+            Sexp::String(new_s)
+        }
+        Sexp::List(children) => {
+            Sexp::List(children.iter().map(fix_vars).collect())
+        }
+    }
 }
 
 fn convert_op(op: Symbol) -> Sexp {
@@ -226,20 +407,21 @@ fn convert_op(op: Symbol) -> Sexp {
 }
 
 /// Basically the same as ty.repr.to_string() but we make arrows infix
-fn convert_ty(ty: Sexp) -> String {
+fn convert_ty(ty: &Sexp) -> String {
     match ty {
-        Sexp::String(str) => str,
+        Sexp::String(str) => str.clone(),
         Sexp::List(children) => {
             // Handle the arrow case, making it infix
             if children.len() == 3 {
                 if let Sexp::String(op) = &children[0] {
-                    if op == &ARROW {
-                        // FIXME: remove clones
+                    if *op == ARROW {
                         if let Sexp::List(args) = children[1].clone() {
-                            let mut arg_tys: Vec<String> = args.into_iter().map(convert_ty).collect();
-                            let return_ty = convert_ty(children[2].clone());
+                            let mut arg_tys: Vec<String> = args.iter().map(convert_ty).collect();
+                            let return_ty = convert_ty(&children[2]);
                             arg_tys.push(return_ty);
-                            return format!("({})", arg_tys.join(ARROW));
+                            return format!("({})", arg_tys.join(JOINING_ARROW));
+                        } else {
+                            return format!("({} {} {})", convert_ty(&children[1]), ARROW, convert_ty(&children[2]));
                         }
                     }
                 }
@@ -253,7 +435,7 @@ fn convert_ty(ty: Sexp) -> String {
 
 fn extract_ih_arguments(rule_name: &String) -> Vec<String> {
     rule_name.strip_prefix(IH_EQUALITY).unwrap().split(',').into_iter().map(|pair|{
-        println!("{}", pair);
+        // println!("{}", pair);
         let args: Vec<&str> = pair.split('=').into_iter().collect();
         // This should just be x=(Constructor c1 c2 c3)
         assert_eq!(args.len(), 2);

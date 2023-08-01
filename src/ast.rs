@@ -69,7 +69,7 @@ pub const ITE: &str = "ite";
 pub const TRUE: &str = "True";
 pub const FALSE: &str = "False";
 pub const APPLY: &str = "$";
-pub const GUARD_PREFIX: &str = "g-";
+pub const GUARD_PREFIX: &str = "g_";
 
 pub fn var_depth(var_name: &str) -> usize {
   var_name.matches("_").count()
@@ -239,7 +239,7 @@ where P: Fn(&'a Symbol) -> bool
 }
 
 // Environment: for now just a map from datatype names to constructor names
-pub type Env = HashMap<Symbol, Vec<Symbol>>;
+pub type Env = HashMap<Symbol, (Vec<String>, Vec<Symbol>)>;
 
 // Type context
 pub type Context = HashMap<Symbol, Type>;
@@ -252,10 +252,15 @@ pub fn mk_context(descr: &[(&str, &str)]) -> Context {
   ctx
 }
 
-pub fn mk_env(descr: &[(&str, &str)]) -> Env {
-  let mut env = Env::new();
-  for (name, cons) in descr {
-    env.insert(Symbol::from(*name), cons.split_whitespace().map(|s| Symbol::from(s)).collect());
-  }
-  env
-}
+// CK: Function is unused and I didn't feel like extending it to account for the change from
+//     Env = HashMap<Symbol, Vec<Symbol>>
+// to
+//     Env = HashMap<Symbol, (Vec<String>, Vec<Symbol>)>
+//
+// pub fn mk_env(descr: &[(&str, &str)]) -> Env {
+//   let mut env = Env::new();
+//   for (name, cons) in descr {
+//     env.insert(Symbol::from(*name), cons.split_whitespace().map(|s| Symbol::from(s)).collect());
+//   }
+//   env
+// }

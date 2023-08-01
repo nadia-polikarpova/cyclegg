@@ -28,6 +28,7 @@ fn main() -> std::io::Result<()> {
   for mut goal in goals {
     let goal_name = goal.name.clone();
     let goal_vars = goal.local_context.clone();
+    let goal_params = goal.params.clone();
     let goal_lhs = goal.lhs.clone();
     let goal_rhs = goal.rhs.clone();
     println!("{} {}: {} = {}", "Proving begin".blue(), goal_name.blue(), goal_lhs, goal_rhs);
@@ -53,11 +54,15 @@ fn main() -> std::io::Result<()> {
       // }
       if let goal::Outcome::Valid = result {
         println!("Cyclic proof:");
-        println!("{}", explain_top(goal_name.clone(), &mut proof_state, goal_lhs.clone(), goal_rhs.clone(), goal_vars.clone()));
+        println!("{}", explain_top(goal_name.clone(), &mut proof_state, goal_lhs.clone(), goal_rhs.clone(),
+                                   goal_params.clone(), goal_vars.clone(), goal.defns.clone(),
+                                   goal.env.clone(), goal.global_context.clone()));
       }
       if let goal::Outcome::Valid = result_without_cyclic {
         println!("Uncycled proof:");
-        println!("{}", explain_top(goal_name_without_cyclic.clone(), &mut proof_state_without_cyclic, goal_lhs, goal_rhs, goal_vars));
+        println!("{}", explain_top(goal_name_without_cyclic.clone(), &mut proof_state_without_cyclic,
+                                   goal_lhs, goal_rhs, goal_params, goal_vars, goal.defns, goal.env,
+                                   goal.global_context));
       }
     }
     if let Some(ref mut file) = result_file {
