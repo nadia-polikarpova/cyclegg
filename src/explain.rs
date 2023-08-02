@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use symbolic_expressions::Sexp;
 
-use crate::ast::{Context, Defns, Env, Expr, Type, map_sexp};
+use crate::ast::{Context, Defns, Env, Type, map_sexp};
 use crate::config::CONFIG;
 use crate::goal::{ProofState, ProofTerm};
 
@@ -20,6 +20,7 @@ const PROOF: &str = "Proof";
 const DATA: &str = "data";
 const WHERE: &str = "where";
 const MODULE: &str = "module";
+const UNDEFINED: &str = "undefined";
 
 const PRAGMA_GADT_SYNTAX: &str = "{-# LANGUAGE GADTSyntax #-}";
 const PRAGMA_LH_REFLECTION: &str = "{-@ LIQUID \"--reflection\" @-}";
@@ -50,11 +51,19 @@ enum RwDirection {
   Backward,
 }
 
+struct LemmaInfo {
+  name: String,
+  // (param_name, param_type)
+  params: Vec<(String, String)>,
+  lhs: Sexp,
+  rhs: Sexp,
+}
+
 pub fn explain_top(
   goal: String,
   state: &mut ProofState,
-  lhs: Expr,
-  rhs: Expr,
+  lhs: Sexp,
+  rhs: Sexp,
   params: Vec<String>,
   top_level_vars: HashMap<Symbol, Type>,
   defns: Defns,
@@ -105,6 +114,39 @@ pub fn explain_top(
     .collect();
   // println!("{:?}", args);
 
+  // Add the types and function definition stub
+  str_explanation.push_str(&add_proof_types_and_stub(&goal, &lhs, &rhs, &args));
+  str_explanation.push('\n');
+
+  // Finally, we can do the proof explanation
+
+  // Maps the rewrite rule string corresponding to a lemma to
+  // (fresh_lemma_name, lemma_vars, lemma LHS, lemma RHS)
+  let mut lemma_map = HashMap::new();
+  let proof_exp = explain_proof(1, goal.clone(), state, &goal, &mut lemma_map);
+  str_explanation.push_str(&proof_exp);
+  str_explanation.push('\n');
+
+  for (_rule_name, lemma_info) in lemma_map.iter() {
+    str_explanation.push_str(&add_proof_types_and_stub(&lemma_info.name, &lemma_info.lhs, &lemma_info.rhs, &lemma_info.params));
+    str_explanation.push(' ');
+    // TODO: add proofs
+    str_explanation.push_str(UNDEFINED);
+    str_explanation.push('\n');
+    str_explanation.push('\n');
+  }
+
+  str_explanation
+}
+
+fn add_proof_types_and_stub(goal: &String, lhs: &Sexp, rhs: &Sexp, args: &Vec<(String, String)>) -> String {
+  let mut str_explanation = String::new();
+
+  // Technically we only need to fix uses of $ in the LHS/RHS, but
+  // converting vars is fine too.
+  let fixed_lhs = fix_value(&lhs);
+  let fixed_rhs = fix_value(&rhs);
+
   // LH type
   str_explanation.push_str(LH_ANNOT_BEGIN);
   str_explanation.push(' ');
@@ -118,8 +160,10 @@ pub fn explain_top(
     .join(JOINING_ARROW);
   str_explanation.push_str(&args_str);
   // Refined type of the proof
-  let proof_str = format!("{{ {} = {} }}", lhs, rhs);
-  str_explanation.push_str(JOINING_ARROW);
+  let proof_str = format!("{{ {} = {} }}", fixed_lhs, fixed_rhs);
+  if !args.is_empty() {
+    str_explanation.push_str(JOINING_ARROW);
+  }
   str_explanation.push_str(&proof_str);
   str_explanation.push(' ');
   str_explanation.push_str(LH_ANNOT_END);
@@ -156,11 +200,7 @@ pub fn explain_top(
     str_explanation.push(' ');
   }
   str_explanation.push_str(EQUALS);
-  str_explanation.push('\n');
 
-  // Finally, we can do the proof explanation
-  let proof_exp = explain_proof(1, goal.clone(), state, &goal);
-  str_explanation.push_str(&proof_exp);
   str_explanation
 }
 
@@ -261,6 +301,7 @@ fn explain_proof(
   goal: String,
   state: &mut ProofState,
   top_goal_name: &String,
+  lemma_map: &mut HashMap<String, LemmaInfo>,
 ) -> String {
   // If it's not in the proof tree, it must be a leaf.
   if !state.proof.contains_key(&goal) {
@@ -268,8 +309,9 @@ fn explain_proof(
     // we must be trying to explain an incomplete proof which is an error.
     return explain_goal(
       depth,
-      state.solved_goal_explanations.get_mut(&goal).unwrap(),
+      state.solved_goal_explanation_and_context.get_mut(&goal).unwrap(),
       top_goal_name,
+      lemma_map,
     );
   }
   // Need to clone to avoid borrowing... unfortunately this is all because we need
@@ -300,6 +342,7 @@ fn explain_proof(
           case_goal.clone(),
           state,
           top_goal_name,
+          lemma_map,
         ));
       }
       str_explanation
@@ -309,8 +352,9 @@ fn explain_proof(
 
 fn explain_goal(
   depth: usize,
-  explanation: &mut Explanation<SymbolLang>,
+  (explanation, local_context): &mut (Explanation<SymbolLang>, Context),
   top_goal_name: &str,
+  lemma_map: &mut HashMap<String, LemmaInfo>,
 ) -> String {
   // TODO: Add lemma justification with USING_LEMMA
   let mut str_explanation: String = String::new();
@@ -363,7 +407,7 @@ fn explain_goal(
           } else if rule_name.starts_with(LEMMA_PREFIX) {
             // println!("extracting lemma from {} {} {}", rule_name, flat_term, next_term);
             str.push_str(&extract_lemma_invocation(
-              rule_name, rw_dir, flat_term, next_term, depth,
+              rule_name, rw_dir, flat_term, next_term, depth, top_goal_name, lemma_map, local_context,
             ));
           }
         }
@@ -397,12 +441,17 @@ fn extract_lemma_invocation(
   curr_term: &FlatTerm<SymbolLang>,
   next_term: &FlatTerm<SymbolLang>,
   depth: usize,
+  top_goal_name: &str,
+  lemma_map: &mut HashMap<String, LemmaInfo>,
+  local_context: &Context,
 ) -> String {
   let mut lemma_str = String::new();
   let mut rewrite_pos: Vec<i32> = vec![];
   let trace = find_rewritten_term(&mut rewrite_pos, next_term).unwrap();
-  let rewritten_to = get_flat_term_from_trace(&trace, next_term);
-  let rewritten_from = get_flat_term_from_trace(&trace, curr_term);
+  let (rewritten_to, rewritten_from) = match rw_dir {
+    RwDirection::Forward  => (get_flat_term_from_trace(&trace, next_term), get_flat_term_from_trace(&trace, curr_term)),
+    RwDirection::Backward => (get_flat_term_from_trace(&trace, curr_term), get_flat_term_from_trace(&trace, next_term)),
+  };
   let lemma: Vec<&str> = rule_str.split(LEMMA_PREFIX).collect::<Vec<&str>>()[1]
     .split(EQUALS)
     .collect();
@@ -410,18 +459,13 @@ fn extract_lemma_invocation(
   let mut lhsmap = map_variables(lemma[0], &flat_term_to_sexp(&rewritten_from).to_string());
   let rhsmap = map_variables(lemma[1], &flat_term_to_sexp(&rewritten_to).to_string());
 
-  match rw_dir {
-    RwDirection::Backward => {
-      assert!(lhsmap
-        .iter()
-        .all(|(key, value)| rhsmap.get(key) == Some(value)))
-    }
-    RwDirection::Forward => {
-      assert!(rhsmap
-        .iter()
-        .all(|(key, value)| lhsmap.get(key) == Some(value)))
-    }
-  }
+  // println!("lhs: {}, rhs: {}", lemma[0], lemma[1]);
+  // println!("lhs_term: {}, rhs_term: {}", &flat_term_to_sexp(&rewritten_from).to_string(), &flat_term_to_sexp(&rewritten_to).to_string());
+  // println!("lhs_map: {:?}, rhs_map: {:?}", lhsmap, rhsmap);
+
+  assert!(rhsmap
+    .iter()
+    .all(|(key, value)| lhsmap.get(key) == Some(value)));
 
   // take the union of both maps
   lhsmap.extend(rhsmap);
@@ -430,7 +474,25 @@ fn extract_lemma_invocation(
   add_indentation(&mut lemma_str, depth);
   lemma_str.push_str(USING_LEMMA);
   lemma_str.push(' ');
-  lemma_str.push_str(rule_str);
+  if let Some(lemma_info) = lemma_map.get(rule_str) {
+    lemma_str.push_str(&lemma_info.name);
+  } else {
+    let lemma_name = format!("{}_lemma_{}", top_goal_name, lemma_map.len());
+    lemma_str.push_str(&lemma_name);
+    let lemma_info = LemmaInfo {
+      name: lemma_name,
+      params: lhsmap.keys().map(|param| {
+        // println!("{:?} - {}", local_context, param);
+        let param_type = local_context.get(&Symbol::from_str(param).unwrap()).unwrap();
+        (param.clone(), param_type.to_string())
+      }).collect(),
+      // Convert to an Sexp so we can fix up its variables and any other stuff
+      // we need to convert
+      lhs: symbolic_expressions::parser::parse_str(&lemma[0]).unwrap(),
+      rhs: symbolic_expressions::parser::parse_str(&lemma[1]).unwrap(),
+    };
+    lemma_map.insert(rule_str.to_string(), lemma_info);
+  }
 
   // add the lemma arguments
   for (_, value) in lhsmap {

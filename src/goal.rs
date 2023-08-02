@@ -1047,7 +1047,8 @@ impl Goal {
       // Remove old variable from the egraph and context
       remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
       warn!("removing var {}", var);
-      new_goal.local_context.remove(&var);
+      // FIXME: is this OK? add a full_context?
+      // new_goal.local_context.remove(&var);
       new_goal.egraph.rebuild();
 
       // println!("egraph size before: {}", new_goal.egraph.total_size());
@@ -1214,7 +1215,7 @@ pub enum ProofTerm {
 /// all of which have to be discharged
 pub struct ProofState {
   pub goals: Vec<Goal>,
-  pub solved_goal_explanations: HashMap<String, Explanation<SymbolLang>>,
+  pub solved_goal_explanation_and_context: HashMap<String, (Explanation<SymbolLang>, Context)>,
   pub impossible_goals: HashSet<String>,
   pub proof: HashMap<String, ProofTerm>,
   pub start_time: Instant,
@@ -1303,7 +1304,7 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
   // let initial_goal_name = goal.name.clone();
   let mut state = ProofState {
     goals: vec![goal],
-    solved_goal_explanations: HashMap::default(),
+    solved_goal_explanation_and_context: HashMap::default(),
     impossible_goals: HashSet::default(),
     proof: HashMap::default(),
     start_time: Instant::now(),
@@ -1329,8 +1330,8 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
         println!("{}", explanation.get_flat_string());
       }
       state
-        .solved_goal_explanations
-        .insert(goal.name, explanation);
+        .solved_goal_explanation_and_context
+        .insert(goal.name, (explanation, goal.local_context));
       continue;
     }
     if CONFIG.verbose {

@@ -29,8 +29,8 @@ fn main() -> std::io::Result<()> {
     let goal_name = goal.name.clone();
     let goal_vars = goal.local_context.clone();
     let goal_params = goal.params.clone();
-    let goal_lhs = goal.lhs.clone();
-    let goal_rhs = goal.rhs.clone();
+    let goal_lhs = goal.lhs_sexp.clone();
+    let goal_rhs = goal.rhs_sexp.clone();
     println!(
       "{} {}: {} = {}",
       "Proving begin".blue(),
