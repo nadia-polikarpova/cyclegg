@@ -1,4 +1,4 @@
-use std::{path::PathBuf, fs::create_dir_all};
+use std::{fs::create_dir_all, path::PathBuf};
 
 use clap::Parser;
 use lazy_static::lazy_static;
@@ -54,7 +54,7 @@ pub struct Args {
   ///
   /// This emits cyclic proofs in addition to uncycled proofs.
   #[clap(long = "cylic-proofs")]
-  pub cyclic_proofs: bool
+  pub cyclic_proofs: bool,
 }
 
 pub struct Config {

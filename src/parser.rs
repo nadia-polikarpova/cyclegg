@@ -204,9 +204,10 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
           })
           .collect::<Result<Vec<Symbol>, SexpError>>()?;
         validate_datatype(name);
-        state
-          .env
-          .insert(Symbol::from(&mangle_name(name)), (mangled_type_var_names, mangled_cons_symbs));
+        state.env.insert(
+          Symbol::from(&mangle_name(name)),
+          (mangled_type_var_names, mangled_cons_symbs),
+        );
       }
       "::" => {
         // This is a type binding: parse name and type:
@@ -233,7 +234,9 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         if let Some(cases) = state.defns.get_mut(&mangled_name) {
           cases.push((mangled_args, mangled_value));
         } else {
-          state.defns.insert(mangled_name, vec![(mangled_args, mangled_value)]);
+          state
+            .defns
+            .insert(mangled_name, vec![(mangled_args, mangled_value)]);
         }
       }
       "===" => {
@@ -248,15 +251,16 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
           .iter()
           .map(|x| {
             let var_name = x.string()?;
-            validate_variable(&var_name);
+            validate_variable(var_name);
             Ok(Symbol::from(&mangle_name(var_name)))
           })
           .collect::<Result<Vec<Symbol>, SexpError>>()?;
         let param_type_list = decl.list()?[3].list()?;
-        let mangled_param_types = param_type_list.iter().map(|x| {
-          Type::new(mangle_sexp(x))
-        });
-        let mangled_params = mangled_param_names.into_iter().zip(mangled_param_types).collect();
+        let mangled_param_types = param_type_list.iter().map(|x| Type::new(mangle_sexp(x)));
+        let mangled_params = mangled_param_names
+          .into_iter()
+          .zip(mangled_param_types)
+          .collect();
 
         let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[4]);
         let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[5]);

@@ -81,30 +81,35 @@ pub fn mangle_name(name: &str) -> String {
   //   $  (function application)
   //   -> (type arrows)
   //   ?x (variable names)
-  if name.chars().next().map(|c| !c.is_alphabetic()).unwrap_or(true) {
-    return name.to_string()
+  if name
+    .chars()
+    .next()
+    .map(|c| !c.is_alphabetic())
+    .unwrap_or(true)
+  {
+    return name.to_string();
   }
   if CONFIG.mangle_names {
-      if name.chars().next().unwrap().is_ascii_uppercase() {
-          format!("Cyclegg_{}", name)
-      } else {
-          format!("cyclegg_{}", name)
-      }
+    if name.chars().next().unwrap().is_ascii_uppercase() {
+      format!("Cyclegg_{}", name)
+    } else {
+      format!("cyclegg_{}", name)
+    }
   } else {
     name.to_string()
   }
 }
 
 pub fn mangle_sexp(sexp: &Sexp) -> Sexp {
-    map_sexp(|elem| Sexp::String(mangle_name(elem)), sexp)
+  map_sexp(|elem| Sexp::String(mangle_name(elem)), sexp)
 }
 
 // Constants
 lazy_static! {
-    pub static ref BOOL_TYPE: String = mangle_name("Bool");
-    pub static ref ITE: String = mangle_name("ite");
-    pub static ref TRUE: String = mangle_name("True");
-    pub static ref FALSE: String = mangle_name("False");
+  pub static ref BOOL_TYPE: String = mangle_name("Bool");
+  pub static ref ITE: String = mangle_name("ite");
+  pub static ref TRUE: String = mangle_name("True");
+  pub static ref FALSE: String = mangle_name("False");
 }
 pub const ARROW: &str = "->";
 pub const APPLY: &str = "$";

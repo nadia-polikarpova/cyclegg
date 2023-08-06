@@ -970,7 +970,7 @@ impl Goal {
             .vars
             .iter()
             .flat_map(|(ancestor_var, ancestor_type)| {
-              if ancestor_type == arg_type && is_descendant(&fresh_var_name, ancestor_var){
+              if ancestor_type == arg_type && is_descendant(&fresh_var_name, ancestor_var) {
                 Some(ancestor_var.clone())
               } else {
                 None
@@ -1117,7 +1117,12 @@ impl Goal {
     let verbosity = format!("-q{}", CONFIG.log_level as usize);
     let dot = self.egraph.dot();
     dot
-      .run_dot(["-Tpng", verbosity.as_str(), "-o", &filename.to_string_lossy()])
+      .run_dot([
+        "-Tpng",
+        verbosity.as_str(),
+        "-o",
+        &filename.to_string_lossy(),
+      ])
       .unwrap();
   }
 

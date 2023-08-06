@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use symbolic_expressions::Sexp;
 
-use crate::ast::{Context, Defns, Env, Type, map_sexp};
+use crate::ast::{map_sexp, Context, Defns, Env, Type};
 use crate::config::CONFIG;
 use crate::goal::{ProofState, ProofTerm};
 
@@ -64,15 +64,19 @@ struct LemmaInfo {
 ///
 /// prop_50_no_cyclic -> Prop50NoCyclic
 pub fn goal_name_to_filename(goal_name: &str) -> String {
-  goal_name.split('_').into_iter().map(|chunk| {
-    let mut chars_iter = chunk.chars();
-    let mut new_string = String::new();
-    if let Some(first_char) = chars_iter.next() {
-      new_string.push(first_char.to_ascii_uppercase());
-    }
-    new_string.extend(chars_iter);
-    new_string
-  }).collect()
+  goal_name
+    .split('_')
+    .into_iter()
+    .map(|chunk| {
+      let mut chars_iter = chunk.chars();
+      let mut new_string = String::new();
+      if let Some(first_char) = chars_iter.next() {
+        new_string.push(first_char.to_ascii_uppercase());
+      }
+      new_string.extend(chars_iter);
+      new_string
+    })
+    .collect()
 }
 
 pub fn explain_top(
@@ -151,7 +155,12 @@ pub fn explain_top(
   str_explanation.push('\n');
 
   for (_rule_name, lemma_info) in lemma_map.iter() {
-    str_explanation.push_str(&add_proof_types_and_stub(&lemma_info.name, &lemma_info.lhs, &lemma_info.rhs, &lemma_info.params));
+    str_explanation.push_str(&add_proof_types_and_stub(
+      &lemma_info.name,
+      &lemma_info.lhs,
+      &lemma_info.rhs,
+      &lemma_info.params,
+    ));
     str_explanation.push(' ');
     // TODO: add proofs
     str_explanation.push_str(UNDEFINED);
@@ -162,13 +171,18 @@ pub fn explain_top(
   str_explanation
 }
 
-fn add_proof_types_and_stub(goal: &str, lhs: &Sexp, rhs: &Sexp, args: &Vec<(String, String)>) -> String {
+fn add_proof_types_and_stub(
+  goal: &str,
+  lhs: &Sexp,
+  rhs: &Sexp,
+  args: &Vec<(String, String)>,
+) -> String {
   let mut str_explanation = String::new();
 
   // Technically we only need to fix uses of $ in the LHS/RHS, but
   // converting vars is fine too.
-  let fixed_lhs = fix_value(&lhs);
-  let fixed_rhs = fix_value(&rhs);
+  let fixed_lhs = fix_value(lhs);
+  let fixed_rhs = fix_value(rhs);
 
   // LH type
   str_explanation.push_str(LH_ANNOT_BEGIN);
@@ -342,7 +356,10 @@ fn explain_proof(
     // we must be trying to explain an incomplete proof which is an error.
     return explain_goal(
       depth,
-      state.solved_goal_explanation_and_context.get_mut(goal).unwrap(),
+      state
+        .solved_goal_explanation_and_context
+        .get_mut(goal)
+        .unwrap(),
       top_goal_name,
       lemma_map,
     );
@@ -442,7 +459,14 @@ fn explain_goal(
           } else if rule_name.starts_with(LEMMA_PREFIX) {
             // println!("extracting lemma from {} {} {}", rule_name, flat_term, next_term);
             str.push_str(&extract_lemma_invocation(
-              rule_name, rw_dir, flat_term, next_term, depth, top_goal_name, lemma_map, local_context,
+              rule_name,
+              rw_dir,
+              flat_term,
+              next_term,
+              depth,
+              top_goal_name,
+              lemma_map,
+              local_context,
             ));
           }
         }
@@ -484,8 +508,14 @@ fn extract_lemma_invocation(
   let mut rewrite_pos: Vec<i32> = vec![];
   let trace = find_rewritten_term(&mut rewrite_pos, next_term).unwrap();
   let (rewritten_to, rewritten_from) = match rw_dir {
-    RwDirection::Forward  => (get_flat_term_from_trace(&trace, next_term), get_flat_term_from_trace(&trace, curr_term)),
-    RwDirection::Backward => (get_flat_term_from_trace(&trace, curr_term), get_flat_term_from_trace(&trace, next_term)),
+    RwDirection::Forward => (
+      get_flat_term_from_trace(&trace, next_term),
+      get_flat_term_from_trace(&trace, curr_term),
+    ),
+    RwDirection::Backward => (
+      get_flat_term_from_trace(&trace, curr_term),
+      get_flat_term_from_trace(&trace, next_term),
+    ),
   };
   let lemma: Vec<&str> = rule_str.split(LEMMA_PREFIX).collect::<Vec<&str>>()[1]
     .split(EQUALS)
@@ -516,15 +546,20 @@ fn extract_lemma_invocation(
     lemma_str.push_str(&lemma_name);
     let lemma_info = LemmaInfo {
       name: lemma_name,
-      params: lhsmap.keys().map(|param| {
-        // println!("{:?} - {}", local_context, param);
-        let param_type = local_context.get(&Symbol::from_str(param).unwrap()).unwrap();
-        (param.clone(), param_type.to_string())
-      }).collect(),
+      params: lhsmap
+        .keys()
+        .map(|param| {
+          // println!("{:?} - {}", local_context, param);
+          let param_type = local_context
+            .get(&Symbol::from_str(param).unwrap())
+            .unwrap();
+          (param.clone(), param_type.to_string())
+        })
+        .collect(),
       // Convert to an Sexp so we can fix up its variables and any other stuff
       // we need to convert
-      lhs: symbolic_expressions::parser::parse_str(&lemma[0]).unwrap(),
-      rhs: symbolic_expressions::parser::parse_str(&lemma[1]).unwrap(),
+      lhs: symbolic_expressions::parser::parse_str(lemma[0]).unwrap(),
+      rhs: symbolic_expressions::parser::parse_str(lemma[1]).unwrap(),
     };
     lemma_map.insert(rule_str.to_string(), lemma_info);
   }
