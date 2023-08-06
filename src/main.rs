@@ -77,7 +77,7 @@ fn main() -> std::io::Result<()> {
       //   println!("{} {}", "Proved case".bright_blue(), goal_name);
       //   println!("{}", explanation.get_string());
       // }
-      if let goal::Outcome::Valid = result && CONFIG.cylic_proofs {
+      if let goal::Outcome::Valid = result {
         let filename = goal_name_to_filename(&goal_name);
         let explanation = explain_top(
             &filename,
