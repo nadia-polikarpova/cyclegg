@@ -1,3 +1,5 @@
+use std::{path::PathBuf, fs::create_dir_all};
+
 use clap::Parser;
 use lazy_static::lazy_static;
 use log::Level;
@@ -13,22 +15,46 @@ pub struct Args {
   pub irreducible_only: bool,
   #[clap(short = 'c', long = "no-cond-split")]
   pub no_cond_split: bool,
-  // timeout
+  /// Timeout
   #[clap(short = 't', long = "timeout", default_value = "0")]
   pub timeout: u64,
-  // logging
+  /// Logging
   #[clap(short = 'l', long = "log", default_value = "ERROR")]
   pub log_level: String,
   #[clap(short = 'g', long = "save-graphs")]
   pub save_graphs: bool,
   #[clap(short = 'r', long = "save-results")]
   pub save_results: bool,
+  /// Deprecated, use -p or --emit-proofs instead
   #[clap(short = 'e', long = "explain-results")]
   pub explain_results: bool,
+  /// Emit proofs under the proofs directory in the output directory
+  #[clap(short = 'p', long = "emit-proofs")]
+  pub emit_proofs: bool,
   #[clap(short = 'v', long = "verbose")]
   pub verbose: bool,
   #[clap(long = "verbose-proofs")]
   pub verbose_proofs: bool,
+  /// Where to save outputs other than proofs
+  #[clap(short = 'o', long = "output-directory", default_value = "target")]
+  pub output_directory: PathBuf,
+  /// Where to save proofs
+  #[clap(long = "proofs-directory", default_value = "target/proofs")]
+  pub proofs_directory: PathBuf,
+  /// Only relevant when -p or --emit-proofs is passed.
+  ///
+  /// By default, when emitting proofs we prepend Cyclegg_ to data types and
+  /// cyclegg_ to functions and variables so that Haskell doesn't complain about
+  /// name clashes.
+  ///
+  /// This disables the name mangling for ease of debugging.
+  #[clap(long = "unmangled-names")]
+  pub unmangled_names: bool,
+  /// By default, we only emit uncycled proofs: those that don't use cyclic lemmas.
+  ///
+  /// This emits cyclic proofs in addition to uncycled proofs.
+  #[clap(long = "cylic-proofs")]
+  pub cyclic_proofs: bool
 }
 
 pub struct Config {
@@ -42,13 +68,24 @@ pub struct Config {
   pub log_level: Level,
   pub save_graphs: bool,
   pub save_results: bool,
-  pub explain_results: bool,
+  pub emit_proofs: bool,
   pub verbose: bool,
   pub verbose_proofs: bool,
+  pub output_directory: PathBuf,
+  pub proofs_directory: PathBuf,
+  pub mangle_names: bool,
+  pub cyclic_proofs: bool,
 }
 
 impl Config {
   fn from_args(args: &Args) -> Self {
+    // Make the output directory if it doesn't exist.
+    create_dir_all(&args.output_directory).unwrap();
+    let emit_proofs = args.explain_results || args.emit_proofs;
+    if emit_proofs {
+      // Make the proofs directory if it doesn't exist.
+      create_dir_all(&args.proofs_directory).unwrap();
+    }
     Self {
       max_split_depth: args.max_split_depth,
       split_conditionals: !args.no_cond_split,
@@ -62,9 +99,13 @@ impl Config {
       log_level: args.log_level.parse().unwrap(),
       save_graphs: args.save_graphs,
       save_results: args.save_results,
-      explain_results: args.explain_results,
+      emit_proofs,
       verbose: args.verbose,
       verbose_proofs: args.verbose_proofs,
+      output_directory: args.output_directory.clone(),
+      proofs_directory: args.proofs_directory.clone(),
+      mangle_names: !args.unmangled_names && emit_proofs,
+      cyclic_proofs: args.cyclic_proofs,
     }
   }
 }

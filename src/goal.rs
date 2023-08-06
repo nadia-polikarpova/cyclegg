@@ -360,6 +360,7 @@ fn instantiate_new_ih_equalities(
     .collect();
   for new_instantiation in new_instantiations.iter() {
     let resolved_instantiation = resolve_instantiation(new_instantiation);
+    // println!("var: {}, ancestors: {:?}", var, var_ancestors);
     // println!("resolved instantiation: {:?}", resolved_instantiation);
     // .to_string().parse().unwrap() converts from sexp to RecExpr<ENodeOrVar<SymbolLang>>
     let new_lhs = resolve_sexp(lhs, &resolved_instantiation)
@@ -804,11 +805,11 @@ impl Goal {
   /// add a fresh scrutinee to its eclass, so that we can match on it.
   fn split_ite(&mut self) {
     let guard_var = "?g".parse().unwrap();
-    let constants = vec![Symbol::from(TRUE), Symbol::from(FALSE)];
+    let constants = vec![Symbol::from(&*TRUE), Symbol::from(&*FALSE)];
     // Iterator over all reducible symbols (i.e. Boolean constants and scrutinees)
     let reducible = self.scrutinees.iter().chain(constants.iter());
     // Pattern "(ite ?g ?x ?y)"
-    let searcher: Pattern<SymbolLang> = format!("({} {} ?x ?y)", ITE, guard_var).parse().unwrap();
+    let searcher: Pattern<SymbolLang> = format!("({} {} ?x ?y)", *ITE, guard_var).parse().unwrap();
     let matches = searcher.search(&self.egraph);
     // Collects class IDs of all irreducible guards;
     // it's a map because the same guard can match more than once, but we only want to add a new scrutinee once
@@ -969,7 +970,7 @@ impl Goal {
             .vars
             .iter()
             .flat_map(|(ancestor_var, ancestor_type)| {
-              if ancestor_type == arg_type {
+              if ancestor_type == arg_type && is_descendant(&fresh_var_name, ancestor_var){
                 Some(ancestor_var.clone())
               } else {
                 None
@@ -1112,11 +1113,11 @@ impl Goal {
 
   /// Save e-graph to file
   fn save_egraph(&self) {
-    let filename = format!("target/{}.png", self.name);
+    let filename = CONFIG.output_directory.join(format!("{}.png", self.name));
     let verbosity = format!("-q{}", CONFIG.log_level as usize);
     let dot = self.egraph.dot();
     dot
-      .run_dot(["-Tpng", verbosity.as_str(), "-o", filename.as_str()])
+      .run_dot(["-Tpng", verbosity.as_str(), "-o", &filename.to_string_lossy()])
       .unwrap();
   }
 
@@ -1124,6 +1125,7 @@ impl Goal {
   /// return the concrete types of constructor arguments.
   fn instantiate_constructor(con_ty: &Type, actual: &Type) -> Vec<Type> {
     let (args, ret) = con_ty.args_ret();
+    // println!("args: {:?}, ret: {}", args, ret);
 
     // Add the actual datatype to a fresh egraph
     let mut egraph: Eg = Default::default();

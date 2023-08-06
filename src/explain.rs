@@ -29,6 +29,7 @@ const IMPORT_LH_EQUATIONAL: &str = "import Language.Haskell.Liquid.Equational";
 
 const LH_ANNOT_BEGIN: &str = "{-@";
 const LH_ANNOT_END: &str = "@-}";
+const LH_AUTOSIZE: &str = "autosize";
 const LH_REFLECT: &str = "reflect";
 const COMMENT: &str = "--";
 // const HAS_TYPE: &str = "::";
@@ -59,8 +60,24 @@ struct LemmaInfo {
   rhs: Sexp,
 }
 
+/// Capitalizes each part of the goal name and removes underscores.
+///
+/// prop_50_no_cyclic -> Prop50NoCyclic
+pub fn goal_name_to_filename(goal_name: &str) -> String {
+  goal_name.split('_').into_iter().map(|chunk| {
+    let mut chars_iter = chunk.chars();
+    let mut new_string = String::new();
+    if let Some(first_char) = chars_iter.next() {
+      new_string.push(first_char.to_ascii_uppercase());
+    }
+    new_string.extend(chars_iter);
+    new_string
+  }).collect()
+}
+
 pub fn explain_top(
-  goal: String,
+  filename: &str,
+  goal: &str,
   state: &mut ProofState,
   lhs: Sexp,
   rhs: Sexp,
@@ -81,14 +98,20 @@ pub fn explain_top(
   str_explanation.push('\n');
   str_explanation.push('\n');
 
+  // Comment explaining the file
+  str_explanation.push_str(COMMENT);
+  str_explanation.push(' ');
+  str_explanation.push_str(goal);
+  str_explanation.push_str(": ");
+  str_explanation.push_str(&lhs.to_string());
+  str_explanation.push_str(" = ");
+  str_explanation.push_str(&rhs.to_string());
+  str_explanation.push('\n');
+
   // Haskell module declaration + imports
   str_explanation.push_str(MODULE);
   str_explanation.push(' ');
-  // Some hacky junk to capitalize the first character of the goal.
-  let mut goal_chars = goal.chars();
-  let goal_first_char = goal_chars.next().unwrap();
-  str_explanation.push(goal_first_char.to_ascii_uppercase());
-  goal_chars.for_each(|c| str_explanation.push(c));
+  str_explanation.push_str(filename);
   str_explanation.push(' ');
   str_explanation.push_str(WHERE);
   str_explanation.push('\n');
@@ -115,7 +138,7 @@ pub fn explain_top(
   // println!("{:?}", args);
 
   // Add the types and function definition stub
-  str_explanation.push_str(&add_proof_types_and_stub(&goal, &lhs, &rhs, &args));
+  str_explanation.push_str(&add_proof_types_and_stub(goal, &lhs, &rhs, &args));
   str_explanation.push('\n');
 
   // Finally, we can do the proof explanation
@@ -123,7 +146,7 @@ pub fn explain_top(
   // Maps the rewrite rule string corresponding to a lemma to
   // (fresh_lemma_name, lemma_vars, lemma LHS, lemma RHS)
   let mut lemma_map = HashMap::new();
-  let proof_exp = explain_proof(1, goal.clone(), state, &goal, &mut lemma_map);
+  let proof_exp = explain_proof(1, goal, state, goal, &mut lemma_map);
   str_explanation.push_str(&proof_exp);
   str_explanation.push('\n');
 
@@ -139,7 +162,7 @@ pub fn explain_top(
   str_explanation
 }
 
-fn add_proof_types_and_stub(goal: &String, lhs: &Sexp, rhs: &Sexp, args: &Vec<(String, String)>) -> String {
+fn add_proof_types_and_stub(goal: &str, lhs: &Sexp, rhs: &Sexp, args: &Vec<(String, String)>) -> String {
   let mut str_explanation = String::new();
 
   // Technically we only need to fix uses of $ in the LHS/RHS, but
@@ -150,7 +173,7 @@ fn add_proof_types_and_stub(goal: &String, lhs: &Sexp, rhs: &Sexp, args: &Vec<(S
   // LH type
   str_explanation.push_str(LH_ANNOT_BEGIN);
   str_explanation.push(' ');
-  str_explanation.push_str(&goal);
+  str_explanation.push_str(goal);
   str_explanation.push_str(JOINING_HAS_TYPE);
   // Join with arrows each of the arguments
   let args_str = args
@@ -170,7 +193,7 @@ fn add_proof_types_and_stub(goal: &String, lhs: &Sexp, rhs: &Sexp, args: &Vec<(S
   str_explanation.push('\n');
 
   // Haskell type
-  str_explanation.push_str(&goal);
+  str_explanation.push_str(goal);
   str_explanation.push_str(JOINING_HAS_TYPE);
   // Same deal as with the LH type but now we just include the types
   let arg_tys_str = args
@@ -187,7 +210,7 @@ fn add_proof_types_and_stub(goal: &String, lhs: &Sexp, rhs: &Sexp, args: &Vec<(S
   str_explanation.push('\n');
 
   // Haskell function definition
-  str_explanation.push_str(&goal);
+  str_explanation.push_str(goal);
   str_explanation.push(' ');
   // Now we include just the arguments and separate by spaces
   let arg_names_str = args
@@ -209,13 +232,23 @@ fn add_data_definitions(env: &Env, global_context: &Context) -> String {
 
   // The definition will look like
   //
+  // {-@ autosize List @-}
   // data List a where
   //   Nil :: List a
   //   Cons :: a -> List a -> List a
   //
   // We will use GADTSyntax for convenience
   for (datatype, (type_vars, constrs)) in env.iter() {
-    // data DATATYPE where
+    // {-@ autosize DATATYPE @-}
+    data_defns_str.push_str(LH_ANNOT_BEGIN);
+    data_defns_str.push(' ');
+    data_defns_str.push_str(LH_AUTOSIZE);
+    data_defns_str.push(' ');
+    data_defns_str.push_str(&datatype.to_string());
+    data_defns_str.push(' ');
+    data_defns_str.push_str(LH_ANNOT_END);
+    data_defns_str.push('\n');
+    // data DATATYPE TYPE_VARS where
     data_defns_str.push_str(DATA);
     data_defns_str.push(' ');
     data_defns_str.push_str(&datatype.to_string());
@@ -298,25 +331,25 @@ fn add_definitions(defns: &Defns, global_context: &Context) -> String {
 
 fn explain_proof(
   depth: usize,
-  goal: String,
+  goal: &str,
   state: &mut ProofState,
-  top_goal_name: &String,
+  top_goal_name: &str,
   lemma_map: &mut HashMap<String, LemmaInfo>,
 ) -> String {
   // If it's not in the proof tree, it must be a leaf.
-  if !state.proof.contains_key(&goal) {
+  if !state.proof.contains_key(goal) {
     // The explanation should be in solved_goal_explanations. If it isn't,
     // we must be trying to explain an incomplete proof which is an error.
     return explain_goal(
       depth,
-      state.solved_goal_explanation_and_context.get_mut(&goal).unwrap(),
+      state.solved_goal_explanation_and_context.get_mut(goal).unwrap(),
       top_goal_name,
       lemma_map,
     );
   }
   // Need to clone to avoid borrowing... unfortunately this is all because we need
   // a mutable reference to the explanations for some annoying reason
-  let proof_term = state.proof.get(&goal).unwrap().clone();
+  let proof_term = state.proof.get(goal).unwrap().clone();
   let mut str_explanation = String::new();
   let mut proof_depth = depth;
   let mut case_depth = depth + 1;
@@ -339,7 +372,7 @@ fn explain_proof(
         // Recursively explain the proof
         str_explanation.push_str(&explain_proof(
           case_depth + 1,
-          case_goal.clone(),
+          case_goal,
           state,
           top_goal_name,
           lemma_map,
@@ -390,7 +423,9 @@ fn explain_goal(
         }
       }
       add_indentation(&mut str, depth);
-      str.push_str(&flat_term_to_sexp(flat_term).to_string());
+      // First we convert to a sexp, then fix its operators. fix_value also
+      // fixes variables which is unnecessary but won't cause harm.
+      str.push_str(&fix_value(&flat_term_to_sexp(flat_term)).to_string());
       if let Some(next_term) = next_term_opt {
         // We don't care about the direction of the rewrite because lemmas
         // and the IH prove equalities which are bidirectional.
@@ -507,12 +542,13 @@ fn add_indentation(s: &mut String, depth: usize) {
 }
 
 fn flat_term_to_sexp(flat_term: &FlatTerm<SymbolLang>) -> Sexp {
+  let op_sexp = Sexp::String(flat_term.node.op.to_string());
   // This is a leaf
   if flat_term.node.children.is_empty() {
-    convert_op(&flat_term.node.op.to_string())
+    op_sexp
   // This is an interior node
   } else {
-    let mut child_sexps: Vec<Sexp> = vec![convert_op(&flat_term.node.op.to_string())];
+    let mut child_sexps: Vec<Sexp> = vec![op_sexp];
     for child in &flat_term.children {
       child_sexps.push(flat_term_to_sexp(child));
     }
@@ -551,6 +587,7 @@ fn convert_op(op_str: &str) -> Sexp {
 
 /// Basically the same as ty.repr.to_string() but we make arrows infix
 fn convert_ty(ty: &Sexp) -> String {
+  // println!("ty: {:?}, fixed: {:?}", ty, fix_arrows(&fix_vars(ty)));
   fix_arrows(&fix_vars(ty))
 }
 

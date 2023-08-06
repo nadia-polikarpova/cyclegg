@@ -25,8 +25,7 @@ fn make_rewrites_from_denfs(defns: &Defns) -> Vec<Rw> {
           };
           let lhs = pattern_with_name.to_string();
           let rhs = rewrite.to_string();
-          validate_identifier(&lhs);
-          validate_identifier(&rhs);
+          // println!("rewrite rule: {} => {}", lhs, rhs);
           let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
           let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
           Rewrite::new(lhs, searcher, applier).unwrap()
@@ -179,7 +178,7 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let mut cons_index = 2;
         // We'll allow no type variables to be given, in which case the second
         // argument must be the constructor list.
-        let type_var_names = if decl.list()?.len() == 3 {
+        let mangled_type_var_names = if decl.list()?.len() == 3 {
           vec![]
         } else {
           // The length should be 4.
@@ -188,45 +187,53 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
           let type_vars = decl.list()?[2].list()?;
           type_vars
             .iter()
-            .map(|x| x.string().map(|s| s.clone()))
+            .map(|x| {
+              let var_name = x.string()?;
+              validate_variable(var_name);
+              Ok(mangle_name(var_name))
+            })
             .collect::<Result<Vec<String>, SexpError>>()?
         };
         let cons = decl.list()?[cons_index].list()?;
-        let cons_symbs: Vec<Symbol> = cons
+        let mangled_cons_symbs = cons
           .iter()
-          .map(|x| Symbol::from(x.string().unwrap()))
-          .collect();
+          .map(|x| {
+            let cons_name = x.string()?;
+            validate_datatype(cons_name);
+            Ok(Symbol::from(&mangle_name(cons_name)))
+          })
+          .collect::<Result<Vec<Symbol>, SexpError>>()?;
         validate_datatype(name);
-        cons_symbs
-          .iter()
-          .for_each(|name| validate_datatype(&name.to_string()));
         state
           .env
-          .insert(Symbol::from(name), (type_var_names, cons_symbs));
+          .insert(Symbol::from(&mangle_name(name)), (mangled_type_var_names, mangled_cons_symbs));
       }
       "::" => {
         // This is a type binding: parse name and type:
-        let name = Symbol::from(decl.list()?[1].string()?);
+        let name = decl.list()?[1].string()?;
         // This could be either a function or a datatype.
-        validate_identifier(&name.to_string());
-        let type_ = Type::new(decl.list()?[2].clone());
-        if let Some(rw) = ParserState::partial_application(&name, &type_) {
+        validate_identifier(name);
+        let mangled_name = Symbol::from(&mangle_name(name));
+        // Mangle each of the elements in the sexp.
+        let mangled_type = Type::new(mangle_sexp(&decl.list()?[2]));
+        if let Some(rw) = ParserState::partial_application(&mangled_name, &mangled_type) {
           state.rules.push(rw);
         }
-        state.context.insert(name, type_);
+        state.context.insert(mangled_name, mangled_type);
       }
       "let" => {
         // This is a definition
         let name = decl.list()?[1].string()?;
         validate_variable(name);
+        let mangled_name = mangle_name(name);
         // Extract the args and value
-        let args = decl.list()?[2].clone();
-        let value = decl.list()?[3].clone();
+        let mangled_args = mangle_sexp(&decl.list()?[2]);
+        let mangled_value = mangle_sexp(&decl.list()?[3]);
         // Add to the hashmap
-        if let Some(cases) = state.defns.get_mut(name) {
-          cases.push((args, value));
+        if let Some(cases) = state.defns.get_mut(&mangled_name) {
+          cases.push((mangled_args, mangled_value));
         } else {
-          state.defns.insert(name.clone(), vec![(args, value)]);
+          state.defns.insert(mangled_name, vec![(mangled_args, mangled_value)]);
         }
       }
       "===" => {
@@ -235,32 +242,35 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         // Goal names are allowed to have underscores so we won't validate them. The
         // worst this can do is have a goal wrongly match a variable name, which should
         // hopefully never happen.
-        let name = decl.list()?[1].string()?;
+        let name = decl.list()?[1].string()?.to_string();
         let param_name_list = decl.list()?[2].list()?;
-        let param_names: Vec<Symbol> = param_name_list
+        let mangled_param_names = param_name_list
           .iter()
-          .map(|x| Symbol::from(x.string().unwrap()))
-          .collect();
-        param_names
-          .iter()
-          .for_each(|param| validate_variable(&param.to_string()));
+          .map(|x| {
+            let var_name = x.string()?;
+            validate_variable(&var_name);
+            Ok(Symbol::from(&mangle_name(var_name)))
+          })
+          .collect::<Result<Vec<Symbol>, SexpError>>()?;
         let param_type_list = decl.list()?[3].list()?;
-        let param_types = param_type_list.iter().map(|x| Type::new(x.clone()));
-        let params = param_names.into_iter().zip(param_types).collect();
+        let mangled_param_types = param_type_list.iter().map(|x| {
+          Type::new(mangle_sexp(x))
+        });
+        let mangled_params = mangled_param_names.into_iter().zip(mangled_param_types).collect();
 
-        let lhs_sexp: Sexp = decl.list()?[4].clone();
-        let rhs_sexp: Sexp = decl.list()?[5].clone();
-        let lhs: Expr = lhs_sexp.to_string().parse().unwrap();
-        let rhs: Expr = rhs_sexp.to_string().parse().unwrap();
-        let rules = &mut state.used_definitions(vec![&lhs, &rhs]);
+        let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[4]);
+        let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[5]);
+        let mangled_lhs: Expr = mangled_lhs_sexp.to_string().parse().unwrap();
+        let mangled_rhs: Expr = mangled_rhs_sexp.to_string().parse().unwrap();
+        let rules = &mut state.used_definitions(vec![&mangled_lhs, &mangled_rhs]);
         rules.extend(make_rewrites_from_denfs(&state.defns));
         let goal = Goal::top(
-          name,
-          lhs,
-          lhs_sexp,
-          rhs,
-          rhs_sexp,
-          params,
+          &name,
+          mangled_lhs,
+          mangled_lhs_sexp,
+          mangled_rhs,
+          mangled_rhs_sexp,
+          mangled_params,
           &state.env,
           &state.context,
           rules,

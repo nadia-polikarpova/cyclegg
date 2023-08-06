@@ -1,7 +1,10 @@
 use egg::*;
+use lazy_static::lazy_static;
 
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 use symbolic_expressions::{Sexp, SexpError};
+
+use crate::config::CONFIG;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
@@ -20,7 +23,7 @@ impl Type {
       Sexp::List(xs) => {
         // This type is a type constructor application
         match xs[0].string()?.as_str() {
-          "->" => Err(SexpError::Other(
+          ARROW => Err(SexpError::Other(
             "expected datatype and got arrow".to_string(),
           )),
           _ => xs[0].string(),
@@ -38,7 +41,7 @@ impl Type {
       Sexp::List(xs) => {
         // This is a type constructor application
         match xs[0].string().unwrap().as_str() {
-          "->" => {
+          ARROW => {
             let args = xs[1]
               .list()
               .unwrap()
@@ -73,10 +76,37 @@ impl Display for Type {
 pub type Expr = RecExpr<SymbolLang>;
 pub type Pat = Pattern<SymbolLang>;
 
-pub const BOOL_TYPE: &str = "Bool";
-pub const ITE: &str = "ite";
-pub const TRUE: &str = "True";
-pub const FALSE: &str = "False";
+pub fn mangle_name(name: &str) -> String {
+  // We never mangle symbols. The cases we have are:
+  //   $  (function application)
+  //   -> (type arrows)
+  //   ?x (variable names)
+  if name.chars().next().map(|c| !c.is_alphabetic()).unwrap_or(true) {
+    return name.to_string()
+  }
+  if CONFIG.mangle_names {
+      if name.chars().next().unwrap().is_ascii_uppercase() {
+          format!("Cyclegg_{}", name)
+      } else {
+          format!("cyclegg_{}", name)
+      }
+  } else {
+    name.to_string()
+  }
+}
+
+pub fn mangle_sexp(sexp: &Sexp) -> Sexp {
+    map_sexp(|elem| Sexp::String(mangle_name(elem)), sexp)
+}
+
+// Constants
+lazy_static! {
+    pub static ref BOOL_TYPE: String = mangle_name("Bool");
+    pub static ref ITE: String = mangle_name("ite");
+    pub static ref TRUE: String = mangle_name("True");
+    pub static ref FALSE: String = mangle_name("False");
+}
+pub const ARROW: &str = "->";
 pub const APPLY: &str = "$";
 pub const GUARD_PREFIX: &str = "g_";
 

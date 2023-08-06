@@ -134,7 +134,7 @@
 (let map (?f Nil          ) Nil                          )
 (let map (?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
 
-(:: filter (-> (-> ?a Bool) (List ?a)) (List ?a))
+(:: filter (-> ((-> (?a) Bool)) (List ?a)) (List ?a))
 (let filter (?p Nil          ) Nil                                                     )
 (let filter (?p (Cons ?x ?xs)) (ite ($ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?xs)))
 
@@ -220,41 +220,16 @@
   (count n (Cons n xs))
 )
 
-(//
-
-(=== prop_66 (p xs) ((-> a Bool) (List a))
-  (leq (len (filter p xs)) (len xs))
-  True
-)
-
-(=== prop_81 (n m xs) (Nat Nat (List a))
-  (take n (drop m xs))
-  (drop m (take (add n m) xs))
-)
-)
-
 (// not provable with uncycling, provable with cyclic)
 
-(//
 (=== prop_30 (x xs) (Nat (List Nat))
   (elem x (ins x xs))
   True
 )
 
-(=== prop_52 (n xs) (Nat (List Nat))
-  (count n xs)
-  (count n (rev xs))
-)
-
 (=== prop_73 (p xs) ((-> a Bool) (List a))
   (rev (filter p xs))
   (filter p (rev xs))
-)
-
-(=== prop_75 (n m xs) (Nat Nat (List Nat))
-  (add (count n xs) (count n (Cons m Nil)))
-  (count n (Cons m xs))
-)
 )
 
 )
