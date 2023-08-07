@@ -1,0 +1,103 @@
+{-# LANGUAGE GADTSyntax #-}
+{-@ LIQUID "--reflection" @-}
+{-@ LIQUID "--ple" @-}
+
+-- prop_87_no_cyclic: (cyclegg_mapE ($ ($ cyclegg_comp cyclegg_f) cyclegg_g) cyclegg_e) = (cyclegg_mapE cyclegg_f (cyclegg_mapE cyclegg_g cyclegg_e))
+module Prop87NoCyclic where
+import Language.Haskell.Liquid.Equational
+
+{-@ autosize Cyclegg_Expr @-}
+data Cyclegg_Expr cyclegg_a where
+  Cyclegg_MkExpr :: ((Cyclegg_Tm cyclegg_a) -> Cyclegg_Nat -> (Cyclegg_Expr cyclegg_a))
+
+{-@ autosize Cyclegg_Tree @-}
+data Cyclegg_Tree cyclegg_a where
+  Cyclegg_Leaf :: (Cyclegg_Tree cyclegg_a)
+  Cyclegg_Node :: ((Cyclegg_Tree cyclegg_a) -> cyclegg_a -> (Cyclegg_Tree cyclegg_a) -> (Cyclegg_Tree cyclegg_a))
+
+{-@ autosize Cyclegg_List @-}
+data Cyclegg_List cyclegg_a where
+  Cyclegg_Nil :: (Cyclegg_List cyclegg_a)
+  Cyclegg_Cons :: (cyclegg_a -> (Cyclegg_List cyclegg_a) -> (Cyclegg_List cyclegg_a))
+
+{-@ autosize Cyclegg_Tm @-}
+data Cyclegg_Tm cyclegg_a where
+  Cyclegg_Var :: (cyclegg_a -> (Cyclegg_Tm cyclegg_a))
+  Cyclegg_Cst :: (Cyclegg_Nat -> (Cyclegg_Tm cyclegg_a))
+  Cyclegg_App :: ((Cyclegg_Expr cyclegg_a) -> (Cyclegg_Expr cyclegg_a) -> (Cyclegg_Tm cyclegg_a))
+
+{-@ autosize Cyclegg_Nat @-}
+data Cyclegg_Nat where
+  Cyclegg_Z :: Cyclegg_Nat
+  Cyclegg_S :: (Cyclegg_Nat -> Cyclegg_Nat)
+
+{-@ autosize Cyclegg_Bool @-}
+data Cyclegg_Bool where
+  Cyclegg_True :: Cyclegg_Bool
+  Cyclegg_False :: Cyclegg_Bool
+
+{-@ autosize Cyclegg_Pair @-}
+data Cyclegg_Pair cyclegg_a cyclegg_b where
+  Cyclegg_Pair :: (cyclegg_a -> cyclegg_b -> (Cyclegg_Pair cyclegg_a cyclegg_b))
+
+-- {-@ reflect cyclegg_mapT @-}
+-- cyclegg_mapT :: ((cyclegg_a -> cyclegg_b) -> (Cyclegg_Tm cyclegg_a) -> (Cyclegg_Tm cyclegg_b))
+-- cyclegg_mapT f (Cyclegg_Var x) = (Cyclegg_Var (($) f x))
+-- cyclegg_mapT f (Cyclegg_Cst n) = (Cyclegg_Cst n)
+-- cyclegg_mapT f (Cyclegg_App e1 e2) = (Cyclegg_App (cyclegg_mapE f e1) (cyclegg_mapE f e2))
+
+-- {-@ reflect cyclegg_mapE @-}
+-- cyclegg_mapE :: ((cyclegg_a -> cyclegg_b) -> (Cyclegg_Expr cyclegg_a) -> (Cyclegg_Expr cyclegg_b))
+-- cyclegg_mapE f (Cyclegg_MkExpr t n) = (Cyclegg_MkExpr (cyclegg_mapT f t) n)
+
+-- {-@ reflect cyclegg_comp @-}
+-- cyclegg_comp :: ((cyclegg_b -> cyclegg_c) -> (cyclegg_a -> cyclegg_b) -> (cyclegg_a) -> cyclegg_c)
+-- cyclegg_comp f g x = (($) f (($) g x))
+
+-- {-@ prop_87_no_cyclic :: cyclegg_f: (cyclegg_b -> cyclegg_c) -> cyclegg_g: (cyclegg_a -> cyclegg_b) -> cyclegg_e: (Cyclegg_Expr cyclegg_a) -> { cyclegg_mapE ( (cyclegg_comp cyclegg_f cyclegg_g) cyclegg_e) = cyclegg_mapE cyclegg_f (cyclegg_mapE cyclegg_g cyclegg_e) } @-}
+-- prop_87_no_cyclic :: (cyclegg_b -> cyclegg_c) -> (cyclegg_a -> cyclegg_b) -> (Cyclegg_Expr cyclegg_a) -> Proof
+-- prop_87_no_cyclic cyclegg_f cyclegg_g cyclegg_e =
+--   case cyclegg_e of
+--     (Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91) ->
+--       case cyclegg_e_90 of
+--         (Cyclegg_App cyclegg_e_90_180 cyclegg_e_90_181) ->
+--           -- prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91) =>
+--           -- (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n)) =>
+--           -- prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91):cyclegg_e_90=(Cyclegg_App cyclegg_e_90_180 cyclegg_e_90_181) =>
+--           -- (cyclegg_mapT ?f (Cyclegg_App ?e1 ?e2)) =>
+--           prop_87_no_cyclic cyclegg_f cyclegg_g cyclegg_e_90_180
+--           -- ih-equality-cyclegg_f=cyclegg_f,cyclegg_g=cyclegg_g,cyclegg_e=cyclegg_e_90_180 =>
+--           ? prop_87_no_cyclic cyclegg_f cyclegg_g cyclegg_e_90_181
+--           -- ih-equality-cyclegg_f=cyclegg_f,cyclegg_g=cyclegg_g,cyclegg_e=cyclegg_e_90_181 =>
+--           -- <= (cyclegg_mapT ?f (Cyclegg_App ?e1 ?e2))
+--           -- <= (cyclegg_mapT ?f (Cyclegg_App ?e1 ?e2))
+--           -- <= prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91):cyclegg_e_90=(Cyclegg_App cyclegg_e_90_180 cyclegg_e_90_181)
+--           -- <= (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n))
+--           -- <= (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n))
+--           -- <= prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91)
+--         (Cyclegg_Cst cyclegg_e_90_180) ->
+--           -- prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91) =>
+--           -- (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n)) =>
+--           -- prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91):cyclegg_e_90=(Cyclegg_Cst cyclegg_e_90_180) =>
+--           -- (cyclegg_mapT ?f (Cyclegg_Cst ?n)) =>
+--           -- <= (cyclegg_mapT ?f (Cyclegg_Cst ?n))
+--           -- <= (cyclegg_mapT ?f (Cyclegg_Cst ?n))
+--           -- <= prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91):cyclegg_e_90=(Cyclegg_Cst cyclegg_e_90_180)
+--           -- <= (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n))
+--           -- <= (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n))
+--           -- <= prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91)
+--           ()
+--         (Cyclegg_Var cyclegg_e_90_180) ->
+--           -- prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91) =>
+--           -- (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n)) =>
+--           -- prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91):cyclegg_e_90=(Cyclegg_Var cyclegg_e_90_180) =>
+--           -- (cyclegg_mapT ?f (Cyclegg_Var ?x)) =>
+--           -- apply-cyclegg_comp =>
+--           -- (cyclegg_comp ?f ?g ?x) =>
+--           -- <= (cyclegg_mapT ?f (Cyclegg_Var ?x))
+--           -- <= (cyclegg_mapT ?f (Cyclegg_Var ?x))
+--           -- <= prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91):cyclegg_e_90=(Cyclegg_Var cyclegg_e_90_180)
+--           -- <= (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n))
+--           -- <= (cyclegg_mapE ?f (Cyclegg_MkExpr ?t ?n))
+--           -- <= prop_87_no_cyclic:cyclegg_e=(Cyclegg_MkExpr cyclegg_e_90 cyclegg_e_91)
+--           ()

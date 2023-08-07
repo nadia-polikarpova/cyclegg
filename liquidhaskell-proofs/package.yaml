@@ -40,7 +40,7 @@ ghc-options:
 # We export nothing
 - -Wmissing-export-lists
 # Continues compiling even if we get an error
-- -fkeep-going
+# - -fkeep-going
 
 library:
   source-dirs: src

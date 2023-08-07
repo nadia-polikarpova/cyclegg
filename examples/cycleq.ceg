@@ -384,7 +384,7 @@
   (count n (Cons x xs))
 )
 
-(=== prop_40 (xs) (List a)
+(=== prop_40 (xs) ((List a))
   (take Z xs)
   Nil
 )
