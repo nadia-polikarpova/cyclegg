@@ -6,33 +6,24 @@ use symbolic_expressions::*;
 use crate::ast::*;
 use crate::goal::*;
 
-fn make_rewrites_from_denfs(defns: &Defns) -> Vec<Rw> {
-  defns
-    .iter()
-    .flat_map(|(name, cases)| {
-      cases
-        .iter()
-        .map(|(pattern, rewrite)| {
-          let name_sexp = Sexp::String(name.clone());
-          let pattern_with_name = match pattern {
-            Sexp::Empty => name_sexp,
-            Sexp::List(args) => {
-              let mut new_list = vec![name_sexp];
-              new_list.extend(args.iter().cloned());
-              Sexp::List(new_list)
-            }
-            arg @ Sexp::String(_) => Sexp::List(vec![name_sexp, arg.clone()]),
-          };
-          let lhs = pattern_with_name.to_string();
-          let rhs = rewrite.to_string();
-          // println!("rewrite rule: {} => {}", lhs, rhs);
-          let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
-          let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
-          Rewrite::new(lhs, searcher, applier).unwrap()
-        })
-        .collect::<Vec<Rw>>()
-    })
-    .collect()
+
+fn make_rewrite_for_defn(name: &str, args: &Sexp, value: &Sexp) -> Rw {
+  let name_sexp = Sexp::String(name.to_string());
+  let pattern_with_name = match args {
+    Sexp::Empty => name_sexp,
+    Sexp::List(args) => {
+      let mut new_list = vec![name_sexp];
+      new_list.extend(args.iter().cloned());
+      Sexp::List(new_list)
+    }
+    arg @ Sexp::String(_) => Sexp::List(vec![name_sexp, arg.clone()]),
+  };
+  let lhs = pattern_with_name.to_string();
+  let rhs = value.to_string();
+  // println!("rewrite rule: {} => {}", lhs, rhs);
+  let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
+  let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
+  Rewrite::new(lhs, searcher, applier).unwrap()
 }
 
 #[derive(Default)]
@@ -47,7 +38,7 @@ struct ParserState {
 impl ParserState {
   /// Return all function definitions used in exprs,
   /// including the functions transitively used in those definitions.
-  pub fn used_definitions(&self, exprs: Vec<&Expr>) -> Vec<Rw> {
+  pub fn used_names_and_definitions(&self, exprs: Vec<&Expr>) -> (HashSet<Symbol>, Vec<Rw>) {
     let mut used_names = HashSet::new();
     let mut used_defs = vec![];
     let mut worklist = vec![];
@@ -68,7 +59,7 @@ impl ParserState {
         self.add_functions(rhs, &mut used_names, &mut worklist);
       }
     }
-    used_defs
+    (used_names, used_defs)
   }
 
   /// Add all functions mentioned in e to used_names and worklist.
@@ -230,6 +221,8 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         // Extract the args and value
         let mangled_args = mangle_sexp(&decl.list()?[2]);
         let mangled_value = mangle_sexp(&decl.list()?[3]);
+        // Add to the rewrites
+        state.rules.push(make_rewrite_for_defn(&mangled_name, &mangled_args, &mangled_value));
         // Add to the hashmap
         if let Some(cases) = state.defns.get_mut(&mangled_name) {
           cases.push((mangled_args, mangled_value));
@@ -266,8 +259,14 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[5]);
         let mangled_lhs: Expr = mangled_lhs_sexp.to_string().parse().unwrap();
         let mangled_rhs: Expr = mangled_rhs_sexp.to_string().parse().unwrap();
-        let rules = &mut state.used_definitions(vec![&mangled_lhs, &mangled_rhs]);
-        rules.extend(make_rewrites_from_denfs(&state.defns));
+        let (names, rules) = &mut state.used_names_and_definitions(vec![&mangled_lhs, &mangled_rhs]);
+        let filtered_defns = state.defns.iter().filter_map(|(defn_name, defn_cases)| {
+          if names.contains(&Symbol::from(defn_name)) {
+            Some((defn_name.clone(), defn_cases.clone()))
+          } else {
+            None
+          }
+        }).collect();
         let goal = Goal::top(
           &name,
           mangled_lhs,
@@ -278,7 +277,7 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
           &state.env,
           &state.context,
           rules,
-          state.defns.clone(),
+          filtered_defns,
         );
         state.goals.push(goal);
       }

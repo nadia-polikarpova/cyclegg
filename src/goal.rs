@@ -48,7 +48,7 @@ impl SmallerVar {
       if contains_function(&sexp) {
         return false;
       }
-      let var_sexp = &fix_singletons(resolve_variable(&var_name, ty_splits));
+      let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, ty_splits));
       let structural_comparison_result = structural_comparision(&sexp, var_sexp);
       // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
       if let StructuralComparison::LT = structural_comparison_result {
@@ -363,11 +363,11 @@ fn instantiate_new_ih_equalities(
     // println!("var: {}, ancestors: {:?}", var, var_ancestors);
     // println!("resolved instantiation: {:?}", resolved_instantiation);
     // .to_string().parse().unwrap() converts from sexp to RecExpr<ENodeOrVar<SymbolLang>>
-    let new_lhs = resolve_sexp(lhs, &resolved_instantiation)
+    let new_lhs = recursively_resolve_sexp(lhs, &resolved_instantiation)
       .to_string()
       .parse()
       .unwrap();
-    let new_rhs = resolve_sexp(rhs, &resolved_instantiation)
+    let new_rhs = recursively_resolve_sexp(rhs, &resolved_instantiation)
       .to_string()
       .parse()
       .unwrap();
@@ -1130,47 +1130,61 @@ impl Goal {
   /// return the concrete types of constructor arguments.
   fn instantiate_constructor(con_ty: &Type, actual: &Type) -> Vec<Type> {
     let (args, ret) = con_ty.args_ret();
-    // println!("args: {:?}, ret: {}", args, ret);
-
-    // Add the actual datatype to a fresh egraph
-    let mut egraph: Eg = Default::default();
-    let actual_as_expr: Expr = format!("{}", actual).parse().unwrap();
-    egraph.add_expr(&actual_as_expr);
-    egraph.rebuild();
-
-    // Create a pattern from the generic return type of the constructor
-    let searcher: Pat = format!("{}", ret).parse().unwrap();
-    let vars = searcher.vars();
-    // This pattern should have a single match in the actual datatype (at the root)
-    let matches = searcher.search(&egraph);
-    assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0].substs.len(), 1);
-    let subst = &matches[0].substs[0];
-    // Convert the substitution range from eclass ids to expressions
-    // (each one of these eclasses stores a single expression, since we only added the actual)
-    let extractor = Extractor::new(&egraph, AstSize);
-    let expr_subst = vars
+    let instantiations = find_instantiations(&ret, actual);
+    // println!("args: {:?}, ret: {}, actual: {:?}", args, ret, actual);
+    // println!("instantiations: {:?}", instantiations);
+    let ret = args
       .iter()
-      .zip(
-        vars
-          .iter()
-          .map(|v| extractor.find_best(*subst.get(*v).unwrap()).1),
-      )
-      .collect::<Vec<_>>();
-
-    let mut res = vec![];
-    // For each argument, substitute all vars with their values in expr subst
-    // (we do it using string replacement because RecExprs are so painful to work with;
-    // I tried to do this substitution in the egraph, but that creates problems with cycles)
-    for arg in args {
-      let mut arg_string = format!("{}", arg);
-      for (var, t) in expr_subst.iter() {
-        arg_string = arg_string.replace(&format!("{}", var), &format!("{}", t));
-      }
-      res.push(arg_string.parse().unwrap());
-    }
-    res
+      .map(|arg| Type::new(resolve_sexp(&arg.repr, &instantiations)))
+      .collect();
+    // println!("new types: {:?}", ret);
+    ret
   }
+
+  // // This was the hacky way that invovled instantiating using an e-graph
+  // fn instantiate_constructor(con_ty: &Type, actual: &Type) -> Vec<Type> {
+  //   let (args, ret) = con_ty.args_ret();
+  //   println!("args: {:?}, ret: {}, actual: {:?}", args, ret, actual);
+  //
+  //   // Add the actual datatype to a fresh egraph
+  //   let mut egraph: Eg = Default::default();
+  //   let actual_as_expr: Expr = format!("{}", actual).parse().unwrap();
+  //   egraph.add_expr(&actual_as_expr);
+  //   egraph.rebuild();
+  //
+  //   // Create a pattern from the generic return type of the constructor
+  //   let searcher: Pat = format!("{}", ret).parse().unwrap();
+  //   let vars = searcher.vars();
+  //   // This pattern should have a single match in the actual datatype (at the root)
+  //   let matches = searcher.search(&egraph);
+  //   assert_eq!(matches.len(), 1);
+  //   assert_eq!(matches[0].substs.len(), 1);
+  //   let subst = &matches[0].substs[0];
+  //   // Convert the substitution range from eclass ids to expressions
+  //   // (each one of these eclasses stores a single expression, since we only added the actual)
+  //   let extractor = Extractor::new(&egraph, AstSize);
+  //   let expr_subst = vars
+  //     .iter()
+  //     .zip(
+  //       vars
+  //         .iter()
+  //         .map(|v| extractor.find_best(*subst.get(*v).unwrap()).1),
+  //     )
+  //     .collect::<Vec<_>>();
+  //
+  //   let mut res = vec![];
+  //   // For each argument, substitute all vars with their values in expr subst
+  //   // (we do it using string replacement because RecExprs are so painful to work with;
+  //   // I tried to do this substitution in the egraph, but that creates problems with cycles)
+  //   for arg in args {
+  //     let mut arg_string = format!("{}", arg);
+  //     for (var, t) in expr_subst.iter() {
+  //       arg_string = arg_string.replace(&format!("{}", var), &format!("{}", t));
+  //     }
+  //     res.push(arg_string.parse().unwrap());
+  //   }
+  //   res
+  // }
 
   // /// Checks to see if we will prove True = False by proving this goal (or if it
   // /// has already been proven).

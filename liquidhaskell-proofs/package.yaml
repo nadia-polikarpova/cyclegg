@@ -33,7 +33,13 @@ ghc-options:
 - -Wmissing-home-modules
 - -Wpartial-fields
 - -Wredundant-constraints
+# Necessary for LH
 - -fplugin=LiquidHaskell
+# We generate a lot of unused matches
+- -Wno-unused-matches
+# We export nothing
+- -Wmissing-export-lists
+# Continues compiling even if we get an error
 - -fkeep-going
 
 library:

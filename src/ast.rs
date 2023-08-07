@@ -160,15 +160,84 @@ pub fn contains_function(sexp: &Sexp) -> bool {
   }
 }
 
-pub fn resolve_sexp(sexp: &Sexp, ty_splits: &HashMap<String, Sexp>) -> Sexp {
-  map_sexp(|v| resolve_variable(v, ty_splits), sexp)
+fn starts_uppercase(string: &str) -> bool {
+  string.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
 }
 
-/// Requires that there are no cycles in ty_splits (which should be true)
-pub fn resolve_variable(var: &str, ty_splits: &HashMap<String, Sexp>) -> Sexp {
-  ty_splits
+fn find_instantiations_helper(proto: &Sexp, actual: &Sexp, instantiations_map: &mut HashMap<String, Sexp>) {
+  match (proto, actual) {
+    (Sexp::Empty, _) | (_, Sexp::Empty) => unreachable!(),
+    (Sexp::String(proto_str), actual_sexp) => {
+      if starts_uppercase(&proto_str) {
+        // It's a constant in the proto, which means it should be a constant
+        // (i.e. a string with the same value) in the actual
+        assert!(actual_sexp.is_string());
+        assert_eq!(proto_str, actual_sexp.string().unwrap());
+      } else {
+        // Otherwise, it's a type variable so we can instantiate it
+        let instantiation = actual_sexp.clone();
+        if let Some(existing_instantiation) = instantiations_map.get(proto_str) {
+          // Past instantiations must agree
+          assert_eq!(&instantiation, existing_instantiation);
+        } else {
+          instantiations_map.insert(proto_str.clone(), instantiation);
+        }
+      }
+    }
+    (Sexp::List(proto_list), actual_sexp) => {
+      // The actual must match the proto
+      assert!(actual_sexp.is_list());
+      let actual_list = actual_sexp.list().unwrap();
+      // Including lengths.
+      assert_eq!(proto_list.len(), actual_list.len());
+      proto_list.iter().zip(actual_list.iter()).for_each(|(sub_proto, sub_actual)| {
+        find_instantiations_helper(sub_proto, sub_actual, instantiations_map)
+      });
+    }
+  }
+}
+
+/// Find the instantiations of proto needed to obtain actual
+///
+/// ex: proto  = (Pair a (Pair b b))
+///     actual = (Pair (List x) (Pair Nat Nat))
+///
+///     instantiations = {a: (List x), b: Nat}
+///
+/// actual is assumed to be a valid instantiation of proto.
+pub fn find_instantiations(proto: &Type, actual: &Type) -> HashMap<String, Sexp> {
+  let mut instantiations = HashMap::new();
+  find_instantiations_helper(&proto.repr, &actual.repr, &mut instantiations);
+  instantiations
+}
+
+/// Resolves a Sexp using instantiations, but does not recursively resolve it.
+///
+/// Ex: sexp:           (List a)
+///     instantiations: {a: (List b), b: Nat}
+///
+///     returns:        (List b)
+pub fn resolve_sexp(sexp: &Sexp, instantiations: &HashMap<String, Sexp>) -> Sexp {
+  map_sexp(|v| {
+    instantiations.get(v).cloned().unwrap_or(Sexp::String(v.to_string()))
+  }, sexp)
+}
+
+/// Recursively resolves a Sexp using instantiations.
+///
+/// Ex: sexp:           (List a)
+///     instantiations: {a: (List b), b: Nat}
+///
+///     returns:        (List Nat)
+pub fn recursively_resolve_sexp(sexp: &Sexp, instantiations: &HashMap<String, Sexp>) -> Sexp {
+  map_sexp(|v| recursively_resolve_variable(v, instantiations), sexp)
+}
+
+/// Requires that there are no cycles in instantiations.
+pub fn recursively_resolve_variable(var: &str, instantiations: &HashMap<String, Sexp>) -> Sexp {
+  instantiations
     .get(var)
-    .map(|sexp| map_sexp(|v| resolve_variable(v, ty_splits), sexp))
+    .map(|sexp| map_sexp(|v| recursively_resolve_variable(v, instantiations), sexp))
     .unwrap_or_else(|| Sexp::String(var.to_string()))
 }
 

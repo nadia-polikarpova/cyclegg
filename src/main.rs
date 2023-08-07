@@ -78,35 +78,38 @@ fn main() -> std::io::Result<()> {
       //   println!("{}", explanation.get_string());
       // }
       if let goal::Outcome::Valid = result {
-        let filename = goal_name_to_filename(&goal_name);
-        let explanation = explain_top(
-          &filename,
-          &goal_name,
-          &mut proof_state,
-          goal_lhs.clone(),
-          goal_rhs.clone(),
-          goal_params.clone(),
-          goal_vars.clone(),
-          goal.defns.clone(),
-          goal.env.clone(),
-          goal.global_context.clone(),
-        );
-        let mut file = File::create(CONFIG.proofs_directory.join(format!("{}.hs", filename)))?;
-        file.write_all(explanation.as_bytes())?;
+        if CONFIG.cyclic_proofs {
+          let filename = goal_name_to_filename(&goal_name);
+          let explanation = explain_top(
+              &filename,
+              &goal_name,
+              &mut proof_state,
+              goal_lhs.clone(),
+              goal_rhs.clone(),
+              goal_params.clone(),
+              goal_vars.clone(),
+              goal.defns.clone(),
+              goal.env.clone(),
+              goal.global_context.clone()
+          );
+          let mut file = File::create(CONFIG.proofs_directory.join(format!("{}.hs", filename)))?;
+          file.write_all(explanation.as_bytes())?;
+        }
       }
       if let goal::Outcome::Valid = result_without_cyclic {
         let filename = goal_name_to_filename(&goal_name_without_cyclic);
-        let explanation = explain_top(
-          &filename,
-          &goal_name_without_cyclic,
-          &mut proof_state_without_cyclic,
-          goal_lhs,
-          goal_rhs,
-          goal_params,
-          goal_vars,
-          goal.defns,
-          goal.env,
-          goal.global_context,
+        let explanation =
+          explain_top(
+            &filename,
+            &goal_name_without_cyclic,
+            &mut proof_state_without_cyclic,
+            goal_lhs,
+            goal_rhs,
+            goal_params,
+            goal_vars,
+            goal.defns,
+            goal.env,
+            goal.global_context
         );
         let mut file = File::create(CONFIG.proofs_directory.join(format!("{}.hs", filename)))?;
         file.write_all(explanation.as_bytes())?;

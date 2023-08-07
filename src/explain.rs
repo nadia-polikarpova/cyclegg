@@ -11,16 +11,17 @@ use crate::goal::{ProofState, ProofTerm};
 
 /// Constants from (Liquid)Haskell
 const EQUALS: &str = "=";
+const UNIT: &str = "()";
 const LH_EQUALS: &str = "==.";
-const USING_LEMMA: &str = "?";
-const AND_THEN: &str = "***";
-const QED: &str = "QED";
-const TAB_WIDTH: usize = 2;
-const PROOF: &str = "Proof";
+const LH_USING_LEMMA: &str = "?";
+const LH_FINISH_PROOF: &str = "***";
+const LH_QED: &str = "QED";
+const LH_PROOF: &str = "Proof";
 const DATA: &str = "data";
 const WHERE: &str = "where";
 const MODULE: &str = "module";
 const UNDEFINED: &str = "undefined";
+const TAB_WIDTH: usize = 2;
 
 const PRAGMA_GADT_SYNTAX: &str = "{-# LANGUAGE GADTSyntax #-}";
 const PRAGMA_LH_REFLECTION: &str = "{-@ LIQUID \"--reflection\" @-}";
@@ -220,7 +221,7 @@ fn add_proof_types_and_stub(
     str_explanation.push_str(JOINING_ARROW);
   }
   // This time we just use the Proof type
-  str_explanation.push_str(PROOF);
+  str_explanation.push_str(LH_PROOF);
   str_explanation.push('\n');
 
   // Haskell function definition
@@ -406,13 +407,15 @@ fn explain_goal(
   top_goal_name: &str,
   lemma_map: &mut HashMap<String, LemmaInfo>,
 ) -> String {
-  // TODO: Add lemma justification with USING_LEMMA
   let mut str_explanation: String = String::new();
   let flat_terms = explanation.make_flat_explanation();
   let next_flat_term_iter = flat_terms.iter().skip(1);
   let flat_term_and_next = flat_terms.iter().zip_longest(next_flat_term_iter);
-  // Render each of the terms in the explanation
-  let flat_strings: Vec<String> = flat_term_and_next
+  // Render each of the terms in the explanation.
+  // The first term is the equality of the previous term and itself (rendered for CONFIG.verbose_proofs).
+  // The second term is the lemma, if used (rendered always).
+  // The third time is the comment string explaining the equality (rendered for CONFIG.verbose_proofs).
+  let explanation_lines: Vec<(String, Option<String>, Option<String>)> = flat_term_and_next
     .map(|flat_term_and_next| {
       let (flat_term, next_term_opt) = match flat_term_and_next {
         EitherOrBoth::Both(flat_term, next_term) => (flat_term, Some(next_term)),
@@ -421,77 +424,148 @@ fn explain_goal(
           unreachable!("next_flat_term_iter somehow is longer than flat_term_iter")
         }
       };
-      let mut str = String::new();
-      if CONFIG.verbose_proofs {
-        if let Some((rule_name, rw_dir)) = &extract_rule_name(flat_term) {
-          add_indentation(&mut str, depth);
-          str.push_str(COMMENT);
-          str.push(' ');
-          if let RwDirection::Backward = rw_dir {
-            str.push_str(BACKWARD_ARROW);
-            str.push(' ');
-          }
-          str.push_str(rule_name);
-          if let RwDirection::Forward = rw_dir {
-            str.push(' ');
-            str.push_str(FORWARD_ARROW);
-          }
-          str.push('\n')
+      let mut item = String::new();
+      let comment = extract_rule_name(flat_term).map(|(rule_name, rw_dir)| {
+        let mut comment_str = String::new();
+        comment_str.push_str(COMMENT);
+        comment_str.push(' ');
+        if let RwDirection::Backward = rw_dir {
+          comment_str.push_str(BACKWARD_ARROW);
+          comment_str.push(' ');
         }
+        comment_str.push_str(&rule_name);
+        if let RwDirection::Forward = rw_dir {
+          comment_str.push(' ');
+          comment_str.push_str(FORWARD_ARROW);
+        }
+        comment_str
+      });
+      // These aren't necessary with PLE and generate spurious constraints so we omit them.
+      if CONFIG.verbose_proofs {
+        // First we convert to a sexp, then fix its operators. fix_value also
+        // fixes variables which is unnecessary but won't cause harm.
+        item.push_str(&fix_value(&flat_term_to_sexp(flat_term)).to_string());
       }
-      add_indentation(&mut str, depth);
-      // First we convert to a sexp, then fix its operators. fix_value also
-      // fixes variables which is unnecessary but won't cause harm.
-      str.push_str(&fix_value(&flat_term_to_sexp(flat_term)).to_string());
-      if let Some(next_term) = next_term_opt {
+      let lemma = next_term_opt.and_then(|next_term| {
         // We don't care about the direction of the rewrite because lemmas
         // and the IH prove equalities which are bidirectional.
-        if let Some((rule_name, rw_dir)) = &extract_rule_name(next_term) {
+        extract_rule_name(next_term).and_then(|(rule_name, rw_dir)| {
           if rule_name.starts_with(IH_EQUALITY_PREFIX) {
-            str.push('\n');
-            let args = extract_ih_arguments(rule_name);
-            add_indentation(&mut str, depth);
-            str.push_str(USING_LEMMA);
-            str.push(' ');
-            str.push_str(top_goal_name);
-            str.push(' ');
-            str.push_str(&args.join(" "));
+            let args = extract_ih_arguments(&rule_name);
+            Some(add_lemma_inovcation(top_goal_name, args.iter()))
           } else if rule_name.starts_with(LEMMA_PREFIX) {
             // println!("extracting lemma from {} {} {}", rule_name, flat_term, next_term);
-            str.push_str(&extract_lemma_invocation(
-              rule_name,
-              rw_dir,
+            Some(extract_lemma_invocation(
+              &rule_name,
+              &rw_dir,
               flat_term,
               next_term,
-              depth,
               top_goal_name,
               lemma_map,
               local_context,
-            ));
+            ))
+          } else {
+            None
           }
-        }
-      }
-      str
+        })
+      });
+      (item, lemma, comment)
     })
     .collect();
-  // Construct a joiner that intersperses newlines and properly spaced
-  // LH_EQUALS operators.
-  let mut joiner = "\n".to_string();
-  add_indentation(&mut joiner, depth);
-  joiner.push_str(LH_EQUALS);
-  joiner.push('\n');
+  // if CONFIG.verbose_proofs {
+  //   // Construct a joiner that intersperses newlines and properly spaced
+  //   // LH_EQUALS operators.
+  //   let mut joiner = "\n".to_string();
+  //   add_indentation(&mut joiner, depth);
+  //   joiner.push_str(LH_EQUALS);
+  //   joiner.push('\n');
 
-  // The bulk of our proof is the individual terms joined by LH_EQUALS.
-  str_explanation.push_str(&flat_strings.join(&joiner));
-  str_explanation.push('\n');
-  add_indentation(&mut str_explanation, depth);
-  // This is just required by LH to finish it.
-  str_explanation.push_str(AND_THEN);
-  str_explanation.push('\n');
-  add_indentation(&mut str_explanation, depth);
-  str_explanation.push_str(QED);
-  str_explanation.push('\n');
+  //   // Individual terms joined by LH_EQUALS.
+  //   str_explanation.push_str(&explanation_lines.join(&joiner));
+  //   str_explanation.push('\n');
+  //   add_indentation(&mut str_explanation, depth);
+  //   // This is just required by LH to finish it.
+  //   str_explanation.push_str(AND_THEN);
+  //   str_explanation.push('\n');
+  //   add_indentation(&mut str_explanation, depth);
+  //   str_explanation.push_str(QED);
+  //   str_explanation.push('\n');
+  // } else {
+
+  // It is a bit redundant to have two ways of emitting lines, but
+  // the logic is simpler to debug.
+  if CONFIG.verbose_proofs {
+    for (line, (item, lemma, comment)) in explanation_lines.iter().enumerate() {
+      add_comment(&mut str_explanation, comment.as_ref(), depth);
+      add_indentation(&mut str_explanation, depth);
+      if line > 0 {
+        str_explanation.push_str(LH_EQUALS);
+        str_explanation.push(' ');
+      }
+      str_explanation.push_str(&item);
+      str_explanation.push('\n');
+      if let Some(lemma_str) = lemma {
+        add_indentation(&mut str_explanation, depth);
+        str_explanation.push_str(LH_USING_LEMMA);
+        str_explanation.push(' ');
+        str_explanation.push_str(lemma_str);
+        str_explanation.push('\n');
+      }
+    }
+    // There will always be at least one line of explanation, so we don't need
+    // to handle the empty case.
+    add_indentation(&mut str_explanation, depth);
+    str_explanation.push_str(LH_FINISH_PROOF);
+    str_explanation.push('\n');
+    add_indentation(&mut str_explanation, depth);
+    str_explanation.push_str(LH_QED);
+    str_explanation.push('\n');
+  } else {
+    let mut is_first_lemma = true;
+    for (_, lemma, comment) in explanation_lines.iter() {
+      add_comment(&mut str_explanation, comment.as_ref(), depth);
+      if let Some(lemma_str) = lemma {
+        add_indentation(&mut str_explanation, depth);
+        if !is_first_lemma {
+          str_explanation.push_str(LH_USING_LEMMA);
+          str_explanation.push(' ');
+        } else {
+          is_first_lemma = false;
+        }
+        str_explanation.push_str(lemma_str);
+        str_explanation.push('\n');
+      }
+    }
+    // It might be that there are no lines in this proof
+    if is_first_lemma {
+      add_indentation(&mut str_explanation, depth);
+      str_explanation.push_str(UNIT);
+      str_explanation.push('\n');
+    }
+  }
+
   str_explanation
+}
+
+fn add_comment(str_explanation: &mut String, comment: Option<&String>, depth: usize) {
+  if CONFIG.proof_comments {
+    if let Some(comment_str) = comment {
+      add_indentation(str_explanation, depth);
+      str_explanation.push_str(comment_str);
+      str_explanation.push('\n');
+    }
+  }
+}
+
+fn add_lemma_inovcation<'a, L>(lemma_name: &str, lemma_arguments: L) -> String
+where L: Iterator<Item = &'a String> {
+  let mut lemma_str = String::new();
+  lemma_str.push_str(lemma_name);
+  for arg in lemma_arguments {
+    lemma_str.push(' ');
+    lemma_str.push_str(arg);
+  }
+  lemma_str
 }
 
 fn extract_lemma_invocation(
@@ -499,12 +573,10 @@ fn extract_lemma_invocation(
   rw_dir: &RwDirection,
   curr_term: &FlatTerm<SymbolLang>,
   next_term: &FlatTerm<SymbolLang>,
-  depth: usize,
   top_goal_name: &str,
   lemma_map: &mut HashMap<String, LemmaInfo>,
   local_context: &Context,
 ) -> String {
-  let mut lemma_str = String::new();
   let mut rewrite_pos: Vec<i32> = vec![];
   let trace = find_rewritten_term(&mut rewrite_pos, next_term).unwrap();
   let (rewritten_to, rewritten_from) = match rw_dir {
@@ -535,17 +607,13 @@ fn extract_lemma_invocation(
   // take the union of both maps
   lhsmap.extend(rhsmap);
 
-  lemma_str.push('\n');
-  add_indentation(&mut lemma_str, depth);
-  lemma_str.push_str(USING_LEMMA);
-  lemma_str.push(' ');
-  if let Some(lemma_info) = lemma_map.get(rule_str) {
-    lemma_str.push_str(&lemma_info.name);
+  let lemma_name = if let Some(lemma_info) = lemma_map.get(rule_str) {
+    // Can't borrow lemma_name in the else case...
+    lemma_info.name.clone()
   } else {
     let lemma_name = format!("{}_lemma_{}", top_goal_name, lemma_map.len());
-    lemma_str.push_str(&lemma_name);
     let lemma_info = LemmaInfo {
-      name: lemma_name,
+      name: lemma_name.clone(),
       params: lhsmap
         .keys()
         .map(|param| {
@@ -562,14 +630,11 @@ fn extract_lemma_invocation(
       rhs: symbolic_expressions::parser::parse_str(lemma[1]).unwrap(),
     };
     lemma_map.insert(rule_str.to_string(), lemma_info);
-  }
+    lemma_name
+  };
 
-  // add the lemma arguments
-  for (_, value) in lhsmap {
-    lemma_str.push_str(&format!(" {}", value));
-  }
-
-  lemma_str
+  // Create the lemma invocation
+  add_lemma_inovcation(&lemma_name, lhsmap.values())
 }
 
 fn add_indentation(s: &mut String, depth: usize) {

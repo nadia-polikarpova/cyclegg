@@ -50,11 +50,14 @@ pub struct Args {
   /// This disables the name mangling for ease of debugging.
   #[clap(long = "unmangled-names")]
   pub unmangled_names: bool,
-  /// By default, we only emit uncycled proofs: those that don't use cyclic lemmas.
+  /// By default, we only emit uncycled proofs: those which don't use cyclic lemmas.
   ///
   /// This emits cyclic proofs in addition to uncycled proofs.
-  #[clap(long = "cylic-proofs")]
+  #[clap(long = "cyclic-proofs")]
   pub cyclic_proofs: bool,
+  /// Do not emit comments in proofs
+  #[clap(long = "no-proof-comments")]
+  pub no_proof_comments: bool,
 }
 
 pub struct Config {
@@ -75,6 +78,7 @@ pub struct Config {
   pub proofs_directory: PathBuf,
   pub mangle_names: bool,
   pub cyclic_proofs: bool,
+  pub proof_comments: bool,
 }
 
 impl Config {
@@ -106,6 +110,7 @@ impl Config {
       proofs_directory: args.proofs_directory.clone(),
       mangle_names: !args.unmangled_names && emit_proofs,
       cyclic_proofs: args.cyclic_proofs,
+      proof_comments: !args.no_proof_comments,
     }
   }
 }
