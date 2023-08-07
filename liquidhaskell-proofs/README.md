@@ -16,11 +16,11 @@ Then the failing proofs were manually fixed.
 ## By the numbers:
 - ~75 propositions total
 - 62 propositions provable with proofs emitted.
-- 53 proofs passing.
+- 56 proofs passing.
 
-Among the 9 failing proofs:
+Among the 6 failing proofs:
 
-- 3 fail due to termination checking
+- 1 fail due to termination checking
 - 3 fail due to syntax errors
 - 2 fail due to totality errors
 
@@ -32,12 +32,6 @@ Among the 9 failing proofs:
   * Termination error
   * Tried to fix using list sum metric.
   * Commented out the function and replaced with `undefined`
-- Prop86NoCyclic.hs
-  * `autosize` doesn't like mutual recursion in `mapT`.
-  * Commented out everything below `mapT`.
-- Prop90NoCyclic.hs
-  * `autosize` doesn't like mutual recursion in `mapT`.
-  * Commented out everything below `headE`.
 
 ### Syntax error
 - Prop87NoCyclic.hs
@@ -102,6 +96,10 @@ Among the 9 failing proofs:
   * Commented out `autosize` (see section on `Unknown func-sort`)
 - Prop84NoCyclic.hs
   * Commented out `autosize` (see section on `Unknown func-sort`)
+- Prop86NoCyclic.hs
+  * Added measure to ensure termination of mutually recursive functions.
+- Prop90NoCyclic.hs
+  * Added measure to ensure termination of mutually recursive functions.
 
 ### `Unknown func-sort` error
 
