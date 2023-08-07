@@ -502,7 +502,7 @@ fn explain_goal(
         str_explanation.push_str(LH_EQUALS);
         str_explanation.push(' ');
       }
-      str_explanation.push_str(&item);
+      str_explanation.push_str(item);
       str_explanation.push('\n');
       if let Some(lemma_str) = lemma {
         add_indentation(&mut str_explanation, depth);
@@ -558,7 +558,9 @@ fn add_comment(str_explanation: &mut String, comment: Option<&String>, depth: us
 }
 
 fn add_lemma_inovcation<'a, L>(lemma_name: &str, lemma_arguments: L) -> String
-where L: Iterator<Item = &'a String> {
+where
+  L: Iterator<Item = &'a String>,
+{
   let mut lemma_str = String::new();
   lemma_str.push_str(lemma_name);
   for arg in lemma_arguments {

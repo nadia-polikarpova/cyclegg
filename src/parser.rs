@@ -6,7 +6,6 @@ use symbolic_expressions::*;
 use crate::ast::*;
 use crate::goal::*;
 
-
 fn make_rewrite_for_defn(name: &str, args: &Sexp, value: &Sexp) -> Rw {
   let name_sexp = Sexp::String(name.to_string());
   let pattern_with_name = match args {
@@ -222,7 +221,11 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let mangled_args = mangle_sexp(&decl.list()?[2]);
         let mangled_value = mangle_sexp(&decl.list()?[3]);
         // Add to the rewrites
-        state.rules.push(make_rewrite_for_defn(&mangled_name, &mangled_args, &mangled_value));
+        state.rules.push(make_rewrite_for_defn(
+          &mangled_name,
+          &mangled_args,
+          &mangled_value,
+        ));
         // Add to the hashmap
         if let Some(cases) = state.defns.get_mut(&mangled_name) {
           cases.push((mangled_args, mangled_value));
@@ -259,14 +262,19 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
         let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[5]);
         let mangled_lhs: Expr = mangled_lhs_sexp.to_string().parse().unwrap();
         let mangled_rhs: Expr = mangled_rhs_sexp.to_string().parse().unwrap();
-        let (names, rules) = &mut state.used_names_and_definitions(vec![&mangled_lhs, &mangled_rhs]);
-        let filtered_defns = state.defns.iter().filter_map(|(defn_name, defn_cases)| {
-          if names.contains(&Symbol::from(defn_name)) {
-            Some((defn_name.clone(), defn_cases.clone()))
-          } else {
-            None
-          }
-        }).collect();
+        let (names, rules) =
+          &mut state.used_names_and_definitions(vec![&mangled_lhs, &mangled_rhs]);
+        let filtered_defns = state
+          .defns
+          .iter()
+          .filter_map(|(defn_name, defn_cases)| {
+            if names.contains(&Symbol::from(defn_name)) {
+              Some((defn_name.clone(), defn_cases.clone()))
+            } else {
+              None
+            }
+          })
+          .collect();
         let goal = Goal::top(
           &name,
           mangled_lhs,

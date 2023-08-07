@@ -161,14 +161,22 @@ pub fn contains_function(sexp: &Sexp) -> bool {
 }
 
 fn starts_uppercase(string: &str) -> bool {
-  string.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+  string
+    .chars()
+    .next()
+    .map(|c| c.is_ascii_uppercase())
+    .unwrap_or(false)
 }
 
-fn find_instantiations_helper(proto: &Sexp, actual: &Sexp, instantiations_map: &mut HashMap<String, Sexp>) {
+fn find_instantiations_helper(
+  proto: &Sexp,
+  actual: &Sexp,
+  instantiations_map: &mut HashMap<String, Sexp>,
+) {
   match (proto, actual) {
     (Sexp::Empty, _) | (_, Sexp::Empty) => unreachable!(),
     (Sexp::String(proto_str), actual_sexp) => {
-      if starts_uppercase(&proto_str) {
+      if starts_uppercase(proto_str) {
         // It's a constant in the proto, which means it should be a constant
         // (i.e. a string with the same value) in the actual
         assert!(actual_sexp.is_string());
@@ -190,9 +198,12 @@ fn find_instantiations_helper(proto: &Sexp, actual: &Sexp, instantiations_map: &
       let actual_list = actual_sexp.list().unwrap();
       // Including lengths.
       assert_eq!(proto_list.len(), actual_list.len());
-      proto_list.iter().zip(actual_list.iter()).for_each(|(sub_proto, sub_actual)| {
-        find_instantiations_helper(sub_proto, sub_actual, instantiations_map)
-      });
+      proto_list
+        .iter()
+        .zip(actual_list.iter())
+        .for_each(|(sub_proto, sub_actual)| {
+          find_instantiations_helper(sub_proto, sub_actual, instantiations_map)
+        });
     }
   }
 }
@@ -218,9 +229,15 @@ pub fn find_instantiations(proto: &Type, actual: &Type) -> HashMap<String, Sexp>
 ///
 ///     returns:        (List b)
 pub fn resolve_sexp(sexp: &Sexp, instantiations: &HashMap<String, Sexp>) -> Sexp {
-  map_sexp(|v| {
-    instantiations.get(v).cloned().unwrap_or(Sexp::String(v.to_string()))
-  }, sexp)
+  map_sexp(
+    |v| {
+      instantiations
+        .get(v)
+        .cloned()
+        .unwrap_or_else(|| Sexp::String(v.to_string()))
+    },
+    sexp,
+  )
 }
 
 /// Recursively resolves a Sexp using instantiations.
