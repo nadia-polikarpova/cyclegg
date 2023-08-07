@@ -67,18 +67,17 @@ cyclegg_count :: (Cyclegg_Nat -> (Cyclegg_List Cyclegg_Nat) -> Cyclegg_Nat)
 cyclegg_count x Cyclegg_Nil = Cyclegg_Z
 cyclegg_count x (Cyclegg_Cons y ys) = (cyclegg_ite (cyclegg_eq x y) (Cyclegg_S (cyclegg_count x ys)) (cyclegg_count x ys))
 
--- {-@ measure natSize @-}
--- {-@ natSize :: Cyclegg_Nat -> Nat @-}
--- natSize :: Cyclegg_Nat -> Int
--- natSize Cyclegg_Z = 0
--- natSize (Cyclegg_S n) = 1 + natSize n
+{-@ measure natSize @-}
+{-@ natSize :: Cyclegg_Nat -> Nat @-}
+natSize :: Cyclegg_Nat -> Int
+natSize Cyclegg_Z = 0
+natSize (Cyclegg_S n) = 1 + natSize n
 
 {-@ measure listSum @-}
 {-@ listSum :: Cyclegg_List Cyclegg_Nat -> Nat @-}
 listSum :: Cyclegg_List Cyclegg_Nat -> Int
 listSum Cyclegg_Nil = 0
-listSum (Cyclegg_Cons Cyclegg_Z xs) = listSum xs
-listSum (Cyclegg_Cons (Cyclegg_S n) xs) = 1 + listSum (Cyclegg_Cons n xs)
+listSum (Cyclegg_Cons n xs) = natSize n + listSum (Cyclegg_Cons n xs)
 
 {-@ prop_52_no_cyclic :: cyclegg_n: Cyclegg_Nat -> cyclegg_xs: (Cyclegg_List Cyclegg_Nat) -> { (cyclegg_count cyclegg_n cyclegg_xs) = (cyclegg_count cyclegg_n (cyclegg_rev cyclegg_xs)) } / [listSum cyclegg_xs] @-}
 prop_52_no_cyclic :: Cyclegg_Nat -> (Cyclegg_List Cyclegg_Nat) -> Proof
