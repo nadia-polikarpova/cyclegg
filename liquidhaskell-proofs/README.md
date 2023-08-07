@@ -16,11 +16,11 @@ Then the failing proofs were manually fixed.
 ## By the numbers:
 - ~75 propositions total
 - 62 propositions provable with proofs emitted.
-- 52 proofs passing.
+- 53 proofs passing.
 
-Among the 10 failing proofs:
+Among the 9 failing proofs:
 
-- 4 fail due to termination checking
+- 3 fail due to termination checking
 - 3 fail due to syntax errors
 - 2 fail due to totality errors
 
@@ -31,10 +31,6 @@ Among the 10 failing proofs:
 - Prop52NoCyclic.hs
   * Termination error
   * Tried to fix using list sum metric.
-  * Commented out the function and replaced with `undefined`
-- Prop57NoCyclic.hs
-  * Termination error
-  * 2nd parameter is always decreasing but others sometimes don't
   * Commented out the function and replaced with `undefined`
 - Prop86NoCyclic.hs
   * `autosize` doesn't like mutual recursion in `mapT`.
@@ -93,6 +89,9 @@ Among the 10 failing proofs:
   * Fix `$` on L68 (needs parens)
 - Prop55NoCyclic.hs
   * Add verbose proof on L97
+- Prop57NoCyclic.hs
+  * Fixed termination error by replacing `(Cyclegg_S cyclegg_m_140_450)` with
+    `cyclegg_m_140` on L101 (the two terms are equal from a case split)
 - Prop79NoCyclic.hs
   * Add verbose proof on L65
 - Prop80NoCyclic.hs
