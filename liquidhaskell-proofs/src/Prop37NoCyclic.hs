@@ -15,7 +15,7 @@ data Cyclegg_Tree cyclegg_a where
   Cyclegg_Leaf :: (Cyclegg_Tree cyclegg_a)
   Cyclegg_Node :: ((Cyclegg_Tree cyclegg_a) -> cyclegg_a -> (Cyclegg_Tree cyclegg_a) -> (Cyclegg_Tree cyclegg_a))
 
-{-@ autosize Cyclegg_List @-}
+-- {-@ autosize Cyclegg_List @-}
 data Cyclegg_List cyclegg_a where
   Cyclegg_Nil :: (Cyclegg_List cyclegg_a)
   Cyclegg_Cons :: (cyclegg_a -> (Cyclegg_List cyclegg_a) -> (Cyclegg_List cyclegg_a))
@@ -26,7 +26,7 @@ data Cyclegg_Tm cyclegg_a where
   Cyclegg_Cst :: (Cyclegg_Nat -> (Cyclegg_Tm cyclegg_a))
   Cyclegg_App :: ((Cyclegg_Expr cyclegg_a) -> (Cyclegg_Expr cyclegg_a) -> (Cyclegg_Tm cyclegg_a))
 
-{-@ autosize Cyclegg_Nat @-}
+-- {-@ autosize Cyclegg_Nat @-}
 data Cyclegg_Nat where
   Cyclegg_Z :: Cyclegg_Nat
   Cyclegg_S :: (Cyclegg_Nat -> Cyclegg_Nat)
@@ -69,155 +69,155 @@ cyclegg_not Cyclegg_False = Cyclegg_True
 
 {-@ prop_37_no_cyclic :: cyclegg_x: Cyclegg_Nat -> cyclegg_xs: (Cyclegg_List Cyclegg_Nat) -> { (cyclegg_not (cyclegg_elem cyclegg_x (cyclegg_delete cyclegg_x cyclegg_xs))) = (Cyclegg_True) } @-}
 prop_37_no_cyclic :: Cyclegg_Nat -> (Cyclegg_List Cyclegg_Nat) -> Proof
-prop_37_no_cyclic cyclegg_x cyclegg_xs = undefined
-  -- case cyclegg_x of
-  --   (Cyclegg_S cyclegg_x_60) ->
-  --     case cyclegg_xs of
-  --       (Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) ->
-  --         let g_38 = (cyclegg_eq cyclegg_xs_110 cyclegg_xs_110) in
-  --           case g_38 of
-  --             (Cyclegg_False ) ->
-  --               let g_34 = (cyclegg_eq cyclegg_x_60 cyclegg_xs_110) in
-  --                 case g_34 of
-  --                   (Cyclegg_False ) ->
-  --                     let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
-  --                       case g_30 of
-  --                         (Cyclegg_False ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_False:g_30=Cyclegg_False =>
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_False:g_30=Cyclegg_False =>
-  --                           prop_37_no_cyclic cyclegg_xs_110 cyclegg_xs_111
-  --                           -- <= ih-equality-cyclegg_x=cyclegg_xs_110,cyclegg_xs=cyclegg_xs_111
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           ? prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --                         (Cyclegg_True ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_False:g_30=Cyclegg_True =>
-  --                           -- (cyclegg_ite Cyclegg_True ?x ?y) =>
-  --                           prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --                   (Cyclegg_True ) ->
-  --                     let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
-  --                       case g_30 of
-  --                         (Cyclegg_False ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True:g_30=Cyclegg_False =>
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True:g_30=Cyclegg_False =>
-  --                           -- <= prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True
-  --                           -- <= add guard scrutinee
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --                         (Cyclegg_True ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True:g_30=Cyclegg_True =>
-  --                           -- (cyclegg_ite Cyclegg_True ?x ?y) =>
-  --                           prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --             (Cyclegg_True ) ->
-  --               let g_34 = (cyclegg_eq cyclegg_x_60 cyclegg_xs_110) in
-  --                 case g_34 of
-  --                   (Cyclegg_False ) ->
-  --                     let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
-  --                       case g_30 of
-  --                         (Cyclegg_False ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_False:g_30=Cyclegg_False =>
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_False:g_30=Cyclegg_False =>
-  --                           -- <= prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True
-  --                           -- <= add guard scrutinee
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --                         (Cyclegg_True ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_False:g_30=Cyclegg_True =>
-  --                           -- (cyclegg_ite Cyclegg_True ?x ?y) =>
-  --                           prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --                   (Cyclegg_True ) ->
-  --                     let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
-  --                       case g_30 of
-  --                         (Cyclegg_False ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True:g_30=Cyclegg_False =>
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True:g_30=Cyclegg_False =>
-  --                           -- <= prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True
-  --                           -- <= add guard scrutinee
-  --                           -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --                           prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --                         (Cyclegg_True ) ->
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
-  --                           -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --                           -- add guard scrutinee =>
-  --                           -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True:g_30=Cyclegg_True =>
-  --                           -- (cyclegg_ite Cyclegg_True ?x ?y) =>
-  --                           prop_37_no_cyclic cyclegg_x cyclegg_xs_111
-  --                           -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
-  --       (Cyclegg_Nil ) ->
-  --         -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=Cyclegg_Nil =>
-  --         -- (cyclegg_delete ?n Cyclegg_Nil) =>
-  --         -- (cyclegg_elem ?n Cyclegg_Nil) =>
-  --         -- (cyclegg_not Cyclegg_False) =>
-  --         ()
-  --   (Cyclegg_Z ) ->
-  --     case cyclegg_xs of
-  --       (Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71) ->
-  --         let g_27 = (cyclegg_eq Cyclegg_Z cyclegg_xs_70) in
-  --           case g_27 of
-  --             (Cyclegg_False ) ->
-  --               -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71) =>
-  --               -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --               -- add guard scrutinee =>
-  --               -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71):g_27=Cyclegg_False =>
-  --               -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --               -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
-  --               -- add guard scrutinee =>
-  --               -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71):g_27=Cyclegg_False =>
-  --               prop_37_no_cyclic cyclegg_xs_70 cyclegg_xs_71
-  --               -- <= ih-equality-cyclegg_x=cyclegg_xs_70,cyclegg_xs=cyclegg_xs_71
-  --               -- (cyclegg_ite Cyclegg_False ?x ?y) =>
-  --               ? prop_37_no_cyclic cyclegg_x cyclegg_xs_71
-  --               -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_71 =>
-  --             (Cyclegg_True ) ->
-  --               -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71) =>
-  --               -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
-  --               -- add guard scrutinee =>
-  --               -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71):g_27=Cyclegg_True =>
-  --               -- (cyclegg_ite Cyclegg_True ?x ?y) =>
-  --               prop_37_no_cyclic cyclegg_x cyclegg_xs_71
-  --               -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_71 =>
-  --       (Cyclegg_Nil ) ->
-  --         -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=Cyclegg_Nil =>
-  --         -- (cyclegg_delete ?n Cyclegg_Nil) =>
-  --         -- (cyclegg_elem ?n Cyclegg_Nil) =>
-  --         -- (cyclegg_not Cyclegg_False) =>
-  --         ()
+prop_37_no_cyclic cyclegg_x cyclegg_xs =
+  case cyclegg_x of
+    (Cyclegg_S cyclegg_x_60) ->
+      case cyclegg_xs of
+        (Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) ->
+          let g_38 = (cyclegg_eq cyclegg_xs_110 cyclegg_xs_110) in
+            case g_38 of
+              (Cyclegg_False ) ->
+                let g_34 = (cyclegg_eq cyclegg_x_60 cyclegg_xs_110) in
+                  case g_34 of
+                    (Cyclegg_False ) ->
+                      let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
+                        case g_30 of
+                          (Cyclegg_False ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_False:g_30=Cyclegg_False =>
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_False:g_30=Cyclegg_False =>
+                            prop_37_no_cyclic cyclegg_xs_110 cyclegg_xs_111
+                            -- <= ih-equality-cyclegg_x=cyclegg_xs_110,cyclegg_xs=cyclegg_xs_111
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            ? prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+                          (Cyclegg_True ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_False:g_30=Cyclegg_True =>
+                            -- (cyclegg_ite Cyclegg_True ?x ?y) =>
+                            prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+                    (Cyclegg_True ) ->
+                      let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
+                        case g_30 of
+                          (Cyclegg_False ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True:g_30=Cyclegg_False =>
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True:g_30=Cyclegg_False =>
+                            -- <= prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True
+                            -- <= add guard scrutinee
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+                          (Cyclegg_True ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_False:g_34=Cyclegg_True:g_30=Cyclegg_True =>
+                            -- (cyclegg_ite Cyclegg_True ?x ?y) =>
+                            prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+              (Cyclegg_True ) ->
+                let g_34 = (cyclegg_eq cyclegg_x_60 cyclegg_xs_110) in
+                  case g_34 of
+                    (Cyclegg_False ) ->
+                      let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
+                        case g_30 of
+                          (Cyclegg_False ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_False:g_30=Cyclegg_False =>
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_False:g_30=Cyclegg_False =>
+                            -- <= prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True
+                            -- <= add guard scrutinee
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+                          (Cyclegg_True ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_False:g_30=Cyclegg_True =>
+                            -- (cyclegg_ite Cyclegg_True ?x ?y) =>
+                            prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+                    (Cyclegg_True ) ->
+                      let g_30 = (cyclegg_eq (Cyclegg_S cyclegg_x_60) cyclegg_xs_110) in
+                        case g_30 of
+                          (Cyclegg_False ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True:g_30=Cyclegg_False =>
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True:g_30=Cyclegg_False =>
+                            -- <= prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True
+                            -- <= add guard scrutinee
+                            -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                            prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+                          (Cyclegg_True ) ->
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111) =>
+                            -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                            -- add guard scrutinee =>
+                            -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=(Cyclegg_Cons cyclegg_xs_110 cyclegg_xs_111):g_38=Cyclegg_True:g_34=Cyclegg_True:g_30=Cyclegg_True =>
+                            -- (cyclegg_ite Cyclegg_True ?x ?y) =>
+                            prop_37_no_cyclic cyclegg_x cyclegg_xs_111
+                            -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_111 =>
+        (Cyclegg_Nil ) ->
+          -- prop_37_no_cyclic:cyclegg_x=(Cyclegg_S cyclegg_x_60):cyclegg_xs=Cyclegg_Nil =>
+          -- (cyclegg_delete ?n Cyclegg_Nil) =>
+          -- (cyclegg_elem ?n Cyclegg_Nil) =>
+          -- (cyclegg_not Cyclegg_False) =>
+          ()
+    (Cyclegg_Z ) ->
+      case cyclegg_xs of
+        (Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71) ->
+          let g_27 = (cyclegg_eq Cyclegg_Z cyclegg_xs_70) in
+            case g_27 of
+              (Cyclegg_False ) ->
+                -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71) =>
+                -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                -- add guard scrutinee =>
+                -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71):g_27=Cyclegg_False =>
+                -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                -- (cyclegg_elem ?n (Cyclegg_Cons ?x ?xs)) =>
+                -- add guard scrutinee =>
+                -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71):g_27=Cyclegg_False =>
+                prop_37_no_cyclic cyclegg_xs_70 cyclegg_xs_71
+                -- <= ih-equality-cyclegg_x=cyclegg_xs_70,cyclegg_xs=cyclegg_xs_71
+                -- (cyclegg_ite Cyclegg_False ?x ?y) =>
+                ? prop_37_no_cyclic cyclegg_x cyclegg_xs_71
+                -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_71 =>
+              (Cyclegg_True ) ->
+                -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71) =>
+                -- (cyclegg_delete ?n (Cyclegg_Cons ?x ?xs)) =>
+                -- add guard scrutinee =>
+                -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=(Cyclegg_Cons cyclegg_xs_70 cyclegg_xs_71):g_27=Cyclegg_True =>
+                -- (cyclegg_ite Cyclegg_True ?x ?y) =>
+                prop_37_no_cyclic cyclegg_x cyclegg_xs_71
+                -- ih-equality-cyclegg_x=cyclegg_x,cyclegg_xs=cyclegg_xs_71 =>
+        (Cyclegg_Nil ) ->
+          -- prop_37_no_cyclic:cyclegg_x=Cyclegg_Z:cyclegg_xs=Cyclegg_Nil =>
+          -- (cyclegg_delete ?n Cyclegg_Nil) =>
+          -- (cyclegg_elem ?n Cyclegg_Nil) =>
+          -- (cyclegg_not Cyclegg_False) =>
+          ()
