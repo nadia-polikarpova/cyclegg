@@ -11,6 +11,18 @@ cargo run --release -- examples/cycleq.ceg -e --proofs-directory=liquidhaskell-p
 
 and then failing proofs manually fixed.
 
+## By the numbers:
+- ~75 propositions total
+- 62 propositions provable with proofs emitted.
+- 44 proofs passing.
+
+Among the 18 failing proofs:
+
+- 8 fail due to a liquid-fixpoint error
+- 5 fail due to termination checking
+- 3 fail due to syntax errors
+- 2 fail due to totality errors
+
 ## Unfixed proofs
 
 ### `Unknown func-sort` error
@@ -71,7 +83,7 @@ Example
   * `last` is not total.
   * Commented out everything below `last`.
 
-## Proof fixes
+## Fixed proofs
 
 - Prop06NoCyclic.hs
   * Add verbose proof on L66
