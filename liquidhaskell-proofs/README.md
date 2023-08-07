@@ -20,7 +20,7 @@ Then the failing proofs were manually fixed.
 
 Among the 10 failing proofs:
 
-- 5 fail due to termination checking
+- 4 fail due to termination checking
 - 3 fail due to syntax errors
 - 2 fail due to totality errors
 
@@ -28,10 +28,6 @@ Among the 10 failing proofs:
 
 ### Termination error
 
-- Prop24NoCyclic.hs
-  * Termination error
-  * 1st parameter is always decreasing but 2nd parameter sometimes doesn't
-  * `undefined` on L103
 - Prop52NoCyclic.hs
   * Termination error
   * Tried to fix using list sum metric.
@@ -75,6 +71,8 @@ Among the 10 failing proofs:
   * Fix `$` on L63 (needs parens)
 - Prop23NoCyclic.hs
   * Add verbose proof on L71
+- Prop24NoCyclic.hs
+  * Add verbose proof on L94
 - Prop29NoCyclic.hs
   * Commented out `autosize` (see section on `Unknown func-sort`)
 - Prop32NoCyclic.hs
