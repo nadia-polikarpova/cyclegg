@@ -38,7 +38,7 @@ ghc-options:
 # We generate a lot of unused matches
 - -Wno-unused-matches
 # We export nothing
-- -Wmissing-export-lists
+- -Wno-missing-export-lists
 # Continues compiling even if we get an error
 # - -fkeep-going
 
