@@ -32,7 +32,7 @@ All results come from runs on a Macbook Air M2.
 N.B. We have cyclic proofs for prop_30 (49ms) and prop_73 (5364ms) but not with
 uncyclegg but these are believed unsound.
 
-| Name    | Uncyclegg result | Cycleq result | Cycleq time (ms) | Cyclegg time (ms) | Uncyclegg time (ms) |
+| Name    | Cycleq result | Uncyclegg result | Cycleq time (ms) | Cyclegg time (ms) | Uncyclegg time (ms) |
 | ------- | ---------------- | ------------- | ---------------- | ----------------- | ------------------- |
 | prop_01 | Valid            |   Valid       |            0.673 |            0.837… |              0.589… |
 | prop_02 | Unknown          | Valid         |           -1.000 |            7.748… |              1.684… |
