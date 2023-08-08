@@ -58,6 +58,9 @@ pub struct Args {
   /// Do not emit comments in proofs
   #[clap(long = "no-proof-comments")]
   pub no_proof_comments: bool,
+  /// Only prove the proposition with this name
+  #[clap(long = "prop")]
+  pub prop: Option<String>,
 }
 
 pub struct Config {
@@ -79,6 +82,7 @@ pub struct Config {
   pub mangle_names: bool,
   pub cyclic_proofs: bool,
   pub proof_comments: bool,
+  pub prop: Option<String>,
 }
 
 impl Config {
@@ -111,6 +115,7 @@ impl Config {
       mangle_names: !args.unmangled_names && emit_proofs,
       cyclic_proofs: args.cyclic_proofs,
       proof_comments: !args.no_proof_comments,
+      prop: args.prop.clone(),
     }
   }
 }

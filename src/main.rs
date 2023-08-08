@@ -28,6 +28,11 @@ fn main() -> std::io::Result<()> {
   };
 
   for mut goal in goals {
+    if let Some(prop_name) = &CONFIG.prop {
+      if &goal.name != prop_name {
+        continue;
+      }
+    }
     let goal_name = goal.name.clone();
     let goal_vars = goal.local_context.clone();
     let goal_params = goal.params.clone();
@@ -116,10 +121,13 @@ fn main() -> std::io::Result<()> {
     }
     if let Some(ref mut file) = result_file {
       let line = format!(
-        "{},{:?},{}\n",
+        "{},{:?},{:?},{},{}\n",
         goal_name,
         result,
-        duration_cyclic.as_secs_f32()
+        result_without_cyclic,
+        // Convert to ms
+        1000. * duration_cyclic.as_secs_f32(),
+        1000. * duration_non_cyclic.as_secs_f32(),
       );
       file.write_all(line.as_bytes())?;
     }
