@@ -16,13 +16,12 @@ Then the failing proofs were manually fixed.
 ## By the numbers:
 - ~75 propositions total
 - 62 propositions provable with proofs emitted.
-- 56 proofs passing.
+- 59 proofs passing.
 
-Among the 6 failing proofs:
+Among the 3 failing proofs:
 
-- 1 fail due to termination checking
-- 3 fail due to syntax errors
-- 2 fail due to totality errors
+- 1 fails due to termination checking
+- 2 fails due to totality errors
 
 ## Unfixed proofs
 
@@ -32,16 +31,6 @@ Among the 6 failing proofs:
   * Termination error
   * Tried to fix using list sum metric.
   * Commented out the function and replaced with `undefined`
-
-### Syntax error
-- Prop87NoCyclic.hs
-  * Something funky's going on in the definition of the prop with parentheses.
-  * Commented out everything below `mapT` since it would fail with termination
-    anyway.
-- Prop88NoCyclic.hs
-  * Same as the above
-- Prop89NoCyclic.hs
-  * Same as the above
 
 ### Totality error
 - Prop61NoCyclic.hs
@@ -97,6 +86,18 @@ Among the 6 failing proofs:
 - Prop84NoCyclic.hs
   * Commented out `autosize` (see section on `Unknown func-sort`)
 - Prop86NoCyclic.hs
+  * Added measure to ensure termination of mutually recursive functions.
+- Prop87NoCyclic.hs
+  * Fixed syntax errors in the proposition (probably some kind of error with how
+    `$` is handled)
+  * Added measure to ensure termination of mutually recursive functions.
+- Prop88NoCyclic.hs
+  * Fixed syntax errors in the proposition (probably some kind of error with how
+    `$` is handled)
+  * Added measure to ensure termination of mutually recursive functions.
+- Prop89NoCyclic.hs
+  * Fixed syntax errors in the proposition (probably some kind of error with how
+    `$` is handled)
   * Added measure to ensure termination of mutually recursive functions.
 - Prop90NoCyclic.hs
   * Added measure to ensure termination of mutually recursive functions.

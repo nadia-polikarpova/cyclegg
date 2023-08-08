@@ -135,3 +135,4 @@ cyclegg_append (Cyclegg_Cons x xs) ys = (Cyclegg_Cons x (cyclegg_append xs ys))
 --           -- <= prop_61_no_cyclic:cyclegg_xs=Cyclegg_Nil
 --           -- <= prop_61_no_cyclic:cyclegg_xs=Cyclegg_Nil:cyclegg_ys=Cyclegg_Nil
 --           ()
+
