@@ -15,7 +15,20 @@ Then the failing proofs were manually fixed.
 
 ## By the numbers:
 - ~75 propositions total
-- 62 propositions provable with proofs emitted.
+- 61 propositions provable with proofs emitted.
+  * Not counting Prop52NoCyclic.hs because there was a bug in the definition of
+    `rev` that made the proof easier.
+
+## Improper proofs
+- Prop52NoCyclic.hs
+  * `rev` was written as
+  ```
+  (:: rev (-> ((List a)) (List a)))
+  (let rev (Nil          ) Nil                       )
+  (let rev ((Cons ?x ?xs)) (append ?xs (Cons ?x Nil)))
+  ```
+  (note the lack of recursive call)
+  * It cannot be proven with the full definition of `rev`.
 
 ## Fixed proofs
 
@@ -51,6 +64,7 @@ Then the failing proofs were manually fixed.
   * Termination error fixed using list sum metric.
   * Had to be careful to include a + 1 for each constructor so that the metric
     worked.
+  * N.B. This is not the proper proof of prop_52 (`rev` doesn't work as intended).
 - Prop55NoCyclic.hs
   * Add verbose proof on L97
 - Prop57NoCyclic.hs

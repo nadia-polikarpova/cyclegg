@@ -19,7 +19,8 @@ cargo run -- examples/add.ceg
 
 # Comparison to CycleQ
 
-Results generated from a282086 using the command
+Results generated from a282086 using the command (prop52 removed because its
+proof was made easier by a bug)
 
 ``` shell
 cargo run --release -- examples/cycleq.ceg -t 10 --save-results
@@ -80,7 +81,6 @@ N.B. The cyclegg timing is a little suspect (e.g. I time `prop_56` as taking
 | prop_49 | Valid            |   Valid       |          231.569 |            2.492… |              1.021… |
 | prop_50 | Valid            |   Valid       |           21.207 |            0.796… |              0.425… |
 | prop_51 | Valid            |   Valid       |            1.855 |            0.453… |              0.459… |
-| prop_52 | Unknown          | Valid         |           -1.000 |          244.433… |             69.506… |
 | prop_55 | Valid            |   Valid       |            1.516 |            0.631… |              0.381… |
 | prop_56 | Valid            |   Valid       |        1,615.585 |        5,194.048… |             12.648… |
 | prop_57 | Valid            |   Valid       |           35.090 |            3.122… |              4.161… |

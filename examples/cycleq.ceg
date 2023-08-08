@@ -177,8 +177,8 @@
 (let zipConcat (?x ?xs (Cons ?y ?ys)) (Cons (Pair ?x ?y) (zip ?xs ?ys)))
 
 (:: rev (-> ((List a)) (List a)))
-(let rev (Nil          ) Nil                       )
-(let rev ((Cons ?x ?xs)) (append ?xs (Cons ?x Nil)))
+(let rev (Nil          ) Nil                             )
+(let rev ((Cons ?x ?xs)) (append (rev ?xs) (Cons ?x Nil)))
 
 (:: height (-> ((Tree a)) Nat))
 (let height (Leaf           ) Z                                )

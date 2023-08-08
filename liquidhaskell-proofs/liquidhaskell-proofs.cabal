@@ -66,6 +66,7 @@ library
       Prop49NoCyclic
       Prop50NoCyclic
       Prop51NoCyclic
+      Prop52Manual
       Prop52NoCyclic
       Prop55NoCyclic
       Prop56NoCyclic

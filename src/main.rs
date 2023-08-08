@@ -27,6 +27,7 @@ fn main() -> std::io::Result<()> {
     None
   };
 
+  println!("Number of goals: {}", goals.len());
   for mut goal in goals {
     if let Some(prop_name) = &CONFIG.prop {
       if &goal.name != prop_name {

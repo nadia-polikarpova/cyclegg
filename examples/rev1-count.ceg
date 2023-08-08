@@ -1,0 +1,41 @@
+(
+(data Bool (True False))
+(:: True Bool)
+(:: False Bool)
+
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(data List (a) (Nil Cons))
+(:: Nil  (List a)                    )
+(:: Cons (-> (a (List a)) (List a)))
+
+(:: ite (-> (Bool a a) a))
+(let ite (True ?x ?y ) ?x)
+(let ite (False ?x ?y) ?y)
+
+(:: eq (-> (Nat Nat) Bool))
+(let eq (Z      Z     ) True      )
+(let eq (Z      (S ?y)) False     )
+(let eq ((S ?x) Z     ) False     )
+(let eq ((S ?x) (S ?y)) (eq ?x ?y))
+
+(:: count (-> (Nat (List Nat)) Nat))
+(let count (?x Nil          ) Z)
+(let count (?x (Cons ?y ?ys)) (ite (eq ?x ?y) (S (count ?x ?ys)) (count ?x ?ys)))
+
+(:: append (-> ((List a) (List a)) (List a)))
+(let append (Nil           ?ys) ?ys                       )
+(let append ((Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
+
+(:: rev1 (-> ((List a)) (List a)))
+(let rev1 (Nil          ) Nil                       )
+(let rev1 ((Cons ?x ?xs)) (append ?xs (Cons ?x Nil)))
+
+(=== rev1_count (n xs) (Nat (List Nat))
+  (count n xs)
+  (count n (rev1 xs))
+)
+
+)
