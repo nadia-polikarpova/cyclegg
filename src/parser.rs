@@ -258,8 +258,32 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
           .zip(mangled_param_types)
           .collect();
 
-        let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[4]);
-        let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[5]);
+        // everything from here on until the last 2 elements is a rewrite rule
+        for i in 4..decl.list()?.len() - 2 {
+          let rule_sexp = &decl.list()?[i];
+          let lhs = mangle_name(&rule_sexp.list()?[1].to_string());
+          let rhs = mangle_name(&rule_sexp.list()?[2].to_string());
+          let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
+          let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
+          // check if this is a bidirectional rewrite
+          match rule_sexp.list()?[0].string()?.as_str() {
+            "=>" => {
+              let rw = Rewrite::new(lhs.clone(), searcher.clone(), applier.clone()).unwrap();
+              state.rules.push(rw);
+              println!("adding rewrite rule: {} => {}", lhs, rhs);
+            }
+            "<=>" => {
+              let rw = Rewrite::new(lhs.clone(), searcher.clone(), applier.clone()).unwrap();
+              state.rules.push(rw);
+              let rw = Rewrite::new(rhs.clone(), applier.clone(), searcher.clone()).unwrap();
+              state.rules.push(rw);
+            }
+            _ => panic!("unknown rewrite rules: {}", rule_sexp),
+          }
+        }
+
+        let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[&decl.list()?.len() - 2]);
+        let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[&decl.list()?.len() - 1]);
         let mangled_lhs: Expr = mangled_lhs_sexp.to_string().parse().unwrap();
         let mangled_rhs: Expr = mangled_rhs_sexp.to_string().parse().unwrap();
         let (names, rules) =
