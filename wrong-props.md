@@ -15,6 +15,11 @@ Tested using cyclic lemmas + half lemmas
   - Reason: UNKNOWN (1.05 sec)
   - Suspected Reason: Timeout
   - Intractable?
+- prop_52
+  - (count n xs) = (count n (rev xs))
+  - Reason: UNKNOWN
+  - Suspected Reason: Timeout
+  - Intractable?
 - prop_53
   - (count n xs) = (count n (sort xs))
   - Reason: UNKNOWN (10.63 sec)

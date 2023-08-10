@@ -476,8 +476,10 @@
   (zip (drop n xs) (drop n ys))
 )
 
-(=== prop_61 (xs ys) ((List a) (List a)) (last (append xs ys)) (lastOfTwo xs ys)
-  )
+(=== prop_61 (xs ys) ((List a) (List a))
+  (last (append xs ys))
+  (lastOfTwo xs ys)
+)
 
 (=== prop_64 (x xs) (a (List a))
   (last (append xs (Cons x Nil)))

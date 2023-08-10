@@ -1,0 +1,80 @@
+(
+(data Bool (True False))
+(:: True Bool)
+(:: False Bool)
+
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(data List (a) (Nil Cons))
+(:: Nil  (List a)                    )
+(:: Cons (-> (a (List a)) (List a)))
+
+(:: ite (-> (Bool a a) a))
+(let ite (True ?x ?y ) ?x)
+(let ite (False ?x ?y) ?y)
+
+(:: not (-> (Bool) Bool))
+(let not (True) False)
+(let not (False) True)
+
+(:: and (-> (Bool Bool) Bool))
+(let and (False ?y) False)
+(let and (?x False) False)
+(let and (True True) True)
+
+(:: add (-> (Nat Nat) Nat))
+(let add (Z      ?y) ?y             )
+(let add ((S ?x) ?y) (S (add ?x ?y)))
+
+(:: sub (-> (Nat Nat) Nat))
+(let sub (?x Z)          ?x         )
+(let sub (Z ?y)          Z          )
+(let sub ((S ?x) (S ?y)) (sub ?x ?y))
+
+(:: leq (-> (Nat Nat) Bool))
+(let leq (Z      ?y) True           )
+(let leq ((S ?x) Z ) False          )
+(let leq ((S ?x) (S ?y)) (leq ?x ?y))
+
+(:: lt (-> (Nat Nat) Bool))
+(let lt (?x     Z     ) False     )
+(let lt (Z      (S ?y)) True      )
+(let lt ((S ?x) (S ?y)) (lt ?x ?y))
+
+(:: eq (-> (Nat Nat) Bool))
+(let eq (Z      Z     ) True      )
+(let eq (Z      (S ?y)) False     )
+(let eq ((S ?x) Z     ) False     )
+(let eq ((S ?x) (S ?y)) (eq ?x ?y))
+
+(:: len (-> ((List a)) Nat))
+(let len (Nil          ) Z            )
+(let len ((Cons ?x ?xs)) (S (len ?xs)))
+
+(:: filter (-> ((-> (a) Bool) (List a)) (List a)))
+(let filter (?p Nil          ) Nil                                                     )
+(let filter (?p (Cons ?x ?xs)) (ite ($ ?p ?x) (Cons ?x (filter ?p ?xs)) (filter ?p ?xs)))
+
+(=== prop_66 (p xs) ((-> a Bool) (List a))
+  (leq (len (filter p xs)) (len xs))
+  True
+)
+
+(=== lemma_prop_66 (p xs) ((-> a Bool) (List a))
+  (leq (len (filter p xs)) (S (len xs)))
+  (leq (len (filter p xs)) (len xs))
+)
+
+(=== lemma_2_prop_66 (m n) (Nat Nat)
+  (ite (leq m n) (leq m (S n)) (not (leq m n)))
+  True
+)
+
+(=== lemma_3_prop_66 (p xs) ((-> a Bool) (List a))
+  (ite (leq (len (filter p xs)) (len xs)) (leq (len (filter p xs)) (S (len xs))) (not (leq (len (filter p xs)) (len xs))))
+  True
+)
+
+)
