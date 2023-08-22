@@ -258,36 +258,59 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
           .zip(mangled_param_types)
           .collect();
 
-        // everything from here on until the last 2 elements is a rewrite rule
-        for i in 4..decl.list()?.len() - 2 {
-          let rule_sexp = &decl.list()?[i];
-          let lhs = mangle_name(&rule_sexp.list()?[1].to_string());
-          let rhs = mangle_name(&rule_sexp.list()?[2].to_string());
-          let searcher: Pattern<SymbolLang> = lhs.parse().unwrap();
-          let applier: Pattern<SymbolLang> = rhs.parse().unwrap();
-          // check if this is a bidirectional rewrite
-          match rule_sexp.list()?[0].string()?.as_str() {
-            "=>" => {
-              let rw = Rewrite::new(lhs.clone(), searcher.clone(), applier.clone()).unwrap();
-              state.rules.push(rw);
-              println!("adding rewrite rule: {} => {}", lhs, rhs);
+        let mut lhs_index = 4;
+        let mut temp_rules = vec![];
+        // Are there any lemmas?
+        if decl.list()?.len() == 7 {
+          // Lemmas we are using to aid this proof
+          for rule_sexp in decl.list()?[4].list()? {
+            let lhs = mangle_sexp(&rule_sexp.list()?[1]);
+            let rhs = mangle_sexp(&rule_sexp.list()?[2]);
+            let searcher: Pattern<SymbolLang> = lhs.to_string().parse().unwrap();
+            let applier: Pattern<SymbolLang> = rhs.to_string().parse().unwrap();
+            // check if this is a bidirectional rewrite
+            match rule_sexp.list()?[0].string()?.as_str() {
+              "=>" => {
+                let rw = Rewrite::new(
+                  format!("hyp-lemma-{}", lhs),
+                  searcher.clone(),
+                  applier.clone(),
+                )
+                .unwrap();
+                temp_rules.push(rw);
+                // println!("adding rewrite rule: {} => {}", lhs, rhs);
+              }
+              "<=>" => {
+                let rw = Rewrite::new(
+                  format!("hyp-lemma-{}", lhs),
+                  searcher.clone(),
+                  applier.clone(),
+                )
+                .unwrap();
+                temp_rules.push(rw);
+                let rw = Rewrite::new(
+                  format!("hyp-lemma-{}", rhs),
+                  applier.clone(),
+                  searcher.clone(),
+                )
+                .unwrap();
+                temp_rules.push(rw);
+              }
+              _ => panic!("unknown rewrite rules: {}", rule_sexp),
             }
-            "<=>" => {
-              let rw = Rewrite::new(lhs.clone(), searcher.clone(), applier.clone()).unwrap();
-              state.rules.push(rw);
-              let rw = Rewrite::new(rhs.clone(), applier.clone(), searcher.clone()).unwrap();
-              state.rules.push(rw);
-            }
-            _ => panic!("unknown rewrite rules: {}", rule_sexp),
           }
+          // Start the LHS 1 element later.
+          lhs_index += 1;
+        } else {
+          // There aren't lemmas, so there must only be 6 elements.
+          assert_eq!(decl.list()?.len(), 6);
         }
 
-        let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[&decl.list()?.len() - 2]);
-        let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[&decl.list()?.len() - 1]);
+        let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[lhs_index]);
+        let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[lhs_index + 1]);
         let mangled_lhs: Expr = mangled_lhs_sexp.to_string().parse().unwrap();
         let mangled_rhs: Expr = mangled_rhs_sexp.to_string().parse().unwrap();
-        let (names, rules) =
-          &mut state.used_names_and_definitions(vec![&mangled_lhs, &mangled_rhs]);
+        let (names, mut rules) = state.used_names_and_definitions(vec![&mangled_lhs, &mangled_rhs]);
         let filtered_defns = state
           .defns
           .iter()
@@ -299,6 +322,7 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
             }
           })
           .collect();
+        rules.extend(temp_rules);
         let goal = Goal::top(
           &name,
           mangled_lhs,
@@ -308,7 +332,7 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
           mangled_params,
           &state.env,
           &state.context,
-          rules,
+          &rules,
           filtered_defns,
         );
         state.goals.push(goal);
