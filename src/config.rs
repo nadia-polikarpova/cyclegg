@@ -61,6 +61,13 @@ pub struct Args {
   /// Only prove the proposition with this name
   #[clap(long = "prop")]
   pub prop: Option<String>,
+  /// By default, we use a rudimentary structural comparison when checking
+  /// whether the arguments of a cyclic lemma are decreasing.
+  ///
+  /// Enabling this will perform comparisons for checking cyclic proof validity
+  /// using only variables.
+  #[clap(long = "no-structural-comparison")]
+  pub no_structural_comparison: bool,
 }
 
 pub struct Config {
@@ -83,6 +90,7 @@ pub struct Config {
   pub cyclic_proofs: bool,
   pub proof_comments: bool,
   pub prop: Option<String>,
+  pub structural_comparison: bool,
 }
 
 impl Config {
@@ -116,6 +124,7 @@ impl Config {
       cyclic_proofs: args.cyclic_proofs,
       proof_comments: !args.no_proof_comments,
       prop: args.prop.clone(),
+      structural_comparison: !args.no_structural_comparison,
     }
   }
 }

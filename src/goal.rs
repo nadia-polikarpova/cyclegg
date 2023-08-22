@@ -43,36 +43,47 @@ impl SmallerVar {
     for (var, expr) in subst {
       let var_name = var.to_string();
       let expr_name = expr.to_string();
-      // let var_sexp = Sexp::String(var_name.clone());
-      let sexp = parser::parse_str(&expr_name).unwrap();
-      if contains_function(&sexp) {
-        return false;
+      if CONFIG.structural_comparison {
+        // Suppose a cyclic lemma is defined over the variable l0
+        //
+        // Suppose also that
+        //   - After a case split, l0 = Cons x1 l1
+        //   - After a second case split, l1 = Cons x2 l2
+        //
+        // With a structural comparison, we will allow the cyclic lemma to be
+        // used on Cons x1 Nil, because we know that Nil is always smaller than
+        // l1.
+        //
+        // In practice, this is probably not often useful.
+        let sexp = parser::parse_str(&expr_name).unwrap();
+        if contains_function(&sexp) {
+          return false;
+        }
+        let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, ty_splits));
+        let structural_comparison_result = structural_comparision(&sexp, var_sexp);
+        // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
+        if let StructuralComparison::LT = structural_comparison_result {
+          // warn!("{} is smaller than {}", sexp, var_name);
+          has_strictly_smaller = true;
+        } else if let StructuralComparison::Incomparable = structural_comparison_result {
+          warn!(
+            "cannot apply lemma with subst [{}], reason: {:?}",
+            info, structural_comparison_result
+          );
+          return false;
+        }
+      } else {
+        // In this branch we only check if the arguments are variables or
+        // directly matching constructors.
+        if is_descendant(&expr_name, &var_name) {
+          // Target is strictly smaller than source
+          has_strictly_smaller = true;
+        } else if expr_name != var_name {
+          // Target is neither strictly smaller nor equal to source
+          // warn!("cannot apply lemma with subst [{}]", info);
+          return false;
+        }
       }
-      let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, ty_splits));
-      let structural_comparison_result = structural_comparision(&sexp, var_sexp);
-      // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
-      if let StructuralComparison::LT = structural_comparison_result {
-        // warn!("{} is smaller than {}", sexp, var_name);
-        has_strictly_smaller = true;
-      } else if let StructuralComparison::Incomparable = structural_comparison_result {
-        warn!(
-          "cannot apply lemma with subst [{}], reason: {:?}",
-          info, structural_comparison_result
-        );
-        return false;
-      }
-      // if is_descendant(&expr_name, &var_name) {
-      //   // Target is strictly smaller than source
-      //   has_strictly_smaller = true;
-      // // } else if expr_name == "Z" {
-      // //   // pass
-      // // } else if var_name == "n" && expr_name == "(S n_40)" {
-      // //   // pass
-      // } else if expr_name != var_name {
-      //   // Target is neither strictly smaller nor equal to source
-      //   // warn!("cannot apply lemma with subst [{}]", info);
-      //   return false;
-      // }
     }
     if has_strictly_smaller {
       warn!("applying lemma with subst [{}]", info);

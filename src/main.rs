@@ -26,14 +26,17 @@ fn main() -> std::io::Result<()> {
   } else {
     None
   };
-
-  println!("Number of goals: {}", goals.len());
+  let mut num_goals_attempted = 0;
+  let mut num_differing_goals = 0;
+  let mut cyclic_num_valid = 0;
+  let mut non_cyclic_num_valid = 0;
   for mut goal in goals {
     if let Some(prop_name) = &CONFIG.prop {
       if &goal.name != prop_name {
         continue;
       }
     }
+    num_goals_attempted += 1;
     let goal_name = goal.name.clone();
     let goal_vars = goal.local_context.clone();
     let goal_params = goal.params.clone();
@@ -64,6 +67,7 @@ fn main() -> std::io::Result<()> {
       );
     }
     if result != result_without_cyclic {
+      num_differing_goals += 1;
       println!(
         "{}: with cyclic {}, without cyclic {} ",
         "Differing results".red(),
@@ -78,6 +82,12 @@ fn main() -> std::io::Result<()> {
       duration_cyclic.as_millis(),
       duration_non_cyclic.as_millis()
     );
+    if let goal::Outcome::Valid = result {
+        cyclic_num_valid += 1;
+    }
+    if let goal::Outcome::Valid = result_without_cyclic {
+        non_cyclic_num_valid += 1;
+    }
     if CONFIG.emit_proofs {
       // for (goal_name, explanation) in &proof_state.solved_goal_explanations {
       //   println!("{} {}", "Proved case".bright_blue(), goal_name);
@@ -133,5 +143,9 @@ fn main() -> std::io::Result<()> {
       file.write_all(line.as_bytes())?;
     }
   }
+  println!("Attempted {} goals:", num_goals_attempted);
+  println!("  {} differing results", num_differing_goals);
+  println!("  {} solved (cyclic)", cyclic_num_valid);
+  println!("  {} solved (no cyclic)", non_cyclic_num_valid);
   Ok(())
 }
