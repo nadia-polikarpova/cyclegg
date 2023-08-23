@@ -25,19 +25,45 @@ fn make_rewrite_for_defn(name: &str, args: &Sexp, value: &Sexp) -> Rw {
   Rewrite::new(lhs, searcher, applier).unwrap()
 }
 
+pub struct RawGoal {
+  pub name: String,
+  pub lhs_sexp: Sexp,
+  pub rhs_sexp: Sexp,
+  pub params: Vec<(Symbol, Type)>,
+  pub local_rules: Vec<Rw>,
+}
+
+impl RawGoal {
+  pub fn new(
+    name: String,
+    lhs_sexp: Sexp,
+    rhs_sexp: Sexp,
+    params: Vec<(Symbol, Type)>,
+    local_rules: Vec<Rw>,
+  ) -> Self {
+    Self {
+      name,
+      lhs_sexp,
+      rhs_sexp,
+      params,
+      local_rules,
+    }
+  }
+}
+
 #[derive(Default)]
-struct ParserState {
-  env: Env,
-  context: Context,
-  defns: Defns,
-  rules: Vec<Rw>,
-  goals: Vec<Goal>,
+pub struct ParserState {
+  pub env: Env,
+  pub context: Context,
+  pub defns: Defns,
+  pub rules: Vec<Rw>,
+  pub raw_goals: Vec<RawGoal>,
 }
 
 impl ParserState {
   /// Return all function definitions used in exprs,
   /// including the functions transitively used in those definitions.
-  pub fn used_names_and_definitions(&self, exprs: Vec<&Expr>) -> (HashSet<Symbol>, Vec<Rw>) {
+  fn used_names_and_definitions(&self, exprs: Vec<&Expr>) -> (HashSet<Symbol>, Vec<Rw>) {
     let mut used_names = HashSet::new();
     let mut used_defs = vec![];
     let mut worklist = vec![];
@@ -136,6 +162,32 @@ impl ParserState {
       Some(Rewrite::new(ParserState::part_app_rule(name), lhs, rhs).unwrap())
     }
   }
+
+  /// This is done after parsing because that way the other we parse does not
+  /// affect whether a goal has all definitions in scope.
+  pub fn get_reductions_and_definitions(
+    &self,
+    lhs_sexp: &Sexp,
+    rhs_sexp: &Sexp,
+    local_rules: Vec<Rw>,
+  ) -> (Vec<Rw>, Defns) {
+    let lhs: Expr = lhs_sexp.to_string().parse().unwrap();
+    let rhs: Expr = rhs_sexp.to_string().parse().unwrap();
+    let (names, mut rules) = self.used_names_and_definitions(vec![&lhs, &rhs]);
+    let filtered_defns = self
+      .defns
+      .iter()
+      .filter_map(|(defn_name, defn_cases)| {
+        if names.contains(&Symbol::from(defn_name)) {
+          Some((defn_name.clone(), defn_cases.clone()))
+        } else {
+          None
+        }
+      })
+      .collect();
+    rules.extend(local_rules);
+    (rules, filtered_defns)
+  }
 }
 
 fn validate_identifier(identifier: &str) {
@@ -155,7 +207,19 @@ fn validate_variable(variable: &str) {
   assert!(variable.starts_with(char::is_lowercase));
 }
 
-pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
+/// Parsing the file returns the whole parser state.
+///
+/// There are two advantages to this from the previous approach, which was returning a Vec<Goal>.
+///
+/// 1. We can now put propositions anywhere in the file and not worry about
+///    definitions being missed since we parse all definitions before we create
+///    goals for props.
+/// 2. We can now avoid a lot of cloning that happens when we create new sub-goals because several
+///    global items that we use (such as the global context) can now be passed as references.
+///
+/// This comes with the minor disadvantage of having to create goals in main.rs from the raw_goals,
+/// but most of the work is done ahead of time.
+pub fn parse_file(filename: &str) -> Result<ParserState, SexpError> {
   let mut state = ParserState::default();
   let sexpr = parser::parse_file(filename).unwrap();
 
@@ -180,6 +244,10 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
             .map(|x| {
               let var_name = x.string()?;
               validate_variable(var_name);
+              // FIXME: We should really only mangle names in the emitted
+              // explanations. If this is fixed, please change the config so
+              // that it does not implicitly adjust the maximum split depth to
+              // account for the additional underscore.
               Ok(mangle_name(var_name))
             })
             .collect::<Result<Vec<String>, SexpError>>()?
@@ -308,34 +376,14 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
 
         let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[lhs_index]);
         let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[lhs_index + 1]);
-        let mangled_lhs: Expr = mangled_lhs_sexp.to_string().parse().unwrap();
-        let mangled_rhs: Expr = mangled_rhs_sexp.to_string().parse().unwrap();
-        let (names, mut rules) = state.used_names_and_definitions(vec![&mangled_lhs, &mangled_rhs]);
-        let filtered_defns = state
-          .defns
-          .iter()
-          .filter_map(|(defn_name, defn_cases)| {
-            if names.contains(&Symbol::from(defn_name)) {
-              Some((defn_name.clone(), defn_cases.clone()))
-            } else {
-              None
-            }
-          })
-          .collect();
-        rules.extend(temp_rules);
-        let goal = Goal::top(
-          &name,
-          mangled_lhs,
+        let raw_goal = RawGoal::new(
+          name,
           mangled_lhs_sexp,
-          mangled_rhs,
           mangled_rhs_sexp,
           mangled_params,
-          &state.env,
-          &state.context,
-          &rules,
-          filtered_defns,
+          temp_rules,
         );
-        state.goals.push(goal);
+        state.raw_goals.push(raw_goal);
       }
       "//" => {
         // comment
@@ -343,5 +391,5 @@ pub fn parse_file(filename: &str) -> Result<Vec<Goal>, SexpError> {
       _ => panic!("unknown declaration: {}", decl),
     }
   }
-  Ok(state.goals)
+  Ok(state)
 }

@@ -14,12 +14,12 @@ use config::{ARGS, CONFIG};
 use explain::explain_top;
 use parser::*;
 
-use crate::explain::goal_name_to_filename;
+use crate::{explain::goal_name_to_filename, goal::Goal};
 
 fn main() -> std::io::Result<()> {
   simple_logger::init_with_level(CONFIG.log_level).unwrap();
 
-  let goals = parse_file(&ARGS.filename).unwrap();
+  let parser_state = parse_file(&ARGS.filename).unwrap();
 
   let mut result_file = if CONFIG.save_results {
     Some(File::create(CONFIG.output_directory.join("results.csv"))?)
@@ -30,7 +30,22 @@ fn main() -> std::io::Result<()> {
   let mut num_differing_goals = 0;
   let mut cyclic_num_valid = 0;
   let mut non_cyclic_num_valid = 0;
-  for mut goal in goals {
+  for raw_goal in parser_state.raw_goals.iter() {
+    let (reductions, defns) = parser_state.get_reductions_and_definitions(
+      &raw_goal.lhs_sexp,
+      &raw_goal.rhs_sexp,
+      raw_goal.local_rules.clone(),
+    );
+    let mut goal = Goal::top(
+      &raw_goal.name,
+      raw_goal.lhs_sexp.clone(),
+      raw_goal.rhs_sexp.clone(),
+      raw_goal.params.clone(),
+      &parser_state.env,
+      &parser_state.context,
+      &reductions,
+      &defns,
+    );
     if let Some(prop_name) = &CONFIG.prop {
       if &goal.name != prop_name {
         continue;
@@ -50,12 +65,12 @@ fn main() -> std::io::Result<()> {
       goal_rhs
     );
     let start_cyclic = Instant::now();
-    let (result, mut proof_state) = goal::prove(goal.clone(), true);
+    let (result, mut proof_state) = goal::prove(goal.copy(), true);
     let duration_cyclic = start_cyclic.elapsed();
     let goal_name_without_cyclic = format!("{}_no_cyclic", goal_name);
     goal.name = goal_name_without_cyclic.clone();
     let start_non_cyclic = Instant::now();
-    let (result_without_cyclic, mut proof_state_without_cyclic) = goal::prove(goal.clone(), false);
+    let (result_without_cyclic, mut proof_state_without_cyclic) = goal::prove(goal.copy(), false);
     let duration_non_cyclic = start_non_cyclic.elapsed();
     if CONFIG.verbose {
       println!(
@@ -83,16 +98,12 @@ fn main() -> std::io::Result<()> {
       duration_non_cyclic.as_millis()
     );
     if let goal::Outcome::Valid = result {
-        cyclic_num_valid += 1;
+      cyclic_num_valid += 1;
     }
     if let goal::Outcome::Valid = result_without_cyclic {
-        non_cyclic_num_valid += 1;
+      non_cyclic_num_valid += 1;
     }
     if CONFIG.emit_proofs {
-      // for (goal_name, explanation) in &proof_state.solved_goal_explanations {
-      //   println!("{} {}", "Proved case".bright_blue(), goal_name);
-      //   println!("{}", explanation.get_string());
-      // }
       if let goal::Outcome::Valid = result {
         if CONFIG.cyclic_proofs {
           let filename = goal_name_to_filename(&goal_name);
@@ -100,13 +111,13 @@ fn main() -> std::io::Result<()> {
             &filename,
             &goal_name,
             &mut proof_state,
-            goal_lhs.clone(),
-            goal_rhs.clone(),
-            goal_params.clone(),
-            goal_vars.clone(),
-            goal.defns.clone(),
-            goal.env.clone(),
-            goal.global_context.clone(),
+            &goal_lhs,
+            &goal_rhs,
+            &goal_params,
+            &goal_vars,
+            goal.defns,
+            goal.env,
+            goal.global_context,
           );
           let mut file = File::create(CONFIG.proofs_directory.join(format!("{}.hs", filename)))?;
           file.write_all(explanation.as_bytes())?;
@@ -118,10 +129,10 @@ fn main() -> std::io::Result<()> {
           &filename,
           &goal_name_without_cyclic,
           &mut proof_state_without_cyclic,
-          goal_lhs,
-          goal_rhs,
-          goal_params,
-          goal_vars,
+          &goal_lhs,
+          &goal_rhs,
+          &goal_params,
+          &goal_vars,
           goal.defns,
           goal.env,
           goal.global_context,

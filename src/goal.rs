@@ -121,105 +121,6 @@ fn rec_expr_to_pattern_ast<L: Clone>(rec_expr: RecExpr<L>) -> RecExpr<ENodeOrVar
   enode_or_vars.into()
 }
 
-// fn instantiate_vars(expr: &Expr, var_instantiations: &Vec<(Symbol, SymbolLang)>) -> Expr {
-//   // This should only replace one node, but I guess if there is a duplication of
-//   // the var in the RecExpr for some reason it will still work.
-//   let new_expr: Vec<SymbolLang> = expr
-//     .as_ref()
-//     .iter()
-//     .map(|node| match node {
-//       SymbolLang { op, children: _ } => {
-//         for (var, target) in var_instantiations.iter() {
-//           if op == var {
-//             return target.clone();
-//           }
-//         }
-//         node.clone()
-//       }
-//     })
-//     .collect();
-//   Expr::from(new_expr)
-// }
-//
-// // FIXME: this is a hack to deal with the case where you have something like
-// // expr: (xs)
-// // var_instantiations: {xs: (Cons y ys), y: z}
-// //
-// // If you instantiate once, you'll get
-// //
-// // new_expr: (Cons y ys)
-// //
-// // But you actually want it to be
-// //
-// // new_expr: (Cons z ys)
-// //
-// // because you needed to instantiate y to z.
-// //
-// // The right solution is to precompute the properly resolved instantiations. But a
-// // valid (and slow!) hack is to just keep instantiating until we reach a fixpoint.
-// fn instantiate_vars_fixpoint(expr: &Expr, var_instantiations: &Vec<(Symbol, SymbolLang)>) -> Expr {
-//   let mut last_expr = expr.clone();
-//   let mut new_expr = instantiate_vars(expr, var_instantiations);
-//   while new_expr != last_expr {
-//     new_expr = instantiate_vars(&new_expr, var_instantiations);
-//     last_expr = new_expr.clone();
-//   }
-//   new_expr
-// }
-//
-// fn get_var_descendent_combinations(
-//   var_descendents: &HashMap<String, Vec<String>>,
-// ) -> Vec<Vec<(String, String)>> {
-//   // TODO CK: I think this is significant overkill. I'm pretty sure we don't need to take
-//   // all combinations, but instead only some small part of them.
-//   //
-//   // At the very least we only need to do combinations of descendents with
-//   // whatever new variable(s) we add - which will prevent some amount of
-//   // combinatorial explosion.
-//   let mut descendent_combinations: Vec<Vec<(String, String)>> = vec![vec![]];
-//   for (var, descendents) in var_descendents.iter() {
-//     let mut new_combinations = vec![];
-//     for descendent in descendents {
-//       for descendent_combination in descendent_combinations.iter() {
-//         let mut new_combination = descendent_combination.clone();
-//         new_combination.push((var.clone(), descendent.clone()));
-//         new_combinations.push(new_combination);
-//       }
-//     }
-//     descendent_combinations = new_combinations;
-//   }
-//   descendent_combinations
-// }
-
-// fn instantiate_descendent_lhs_and_rhs(
-//   egraph: &mut Eg,
-//   lhs: &Expr,
-//   rhs: &Expr,
-//   vars_descendents: &HashMap<String, Vec<String>>,
-// ) {
-//   // println!("vars_descendents: {:?}", vars_descendents);
-//   for param_instantiations in get_var_descendent_combinations(vars_descendents) {
-//     let var_instantiations = param_instantiations
-//       .into_iter()
-//       .map(|(param, descendent)| (Symbol::from(param), SymbolLang::leaf(descendent)))
-//       .collect();
-//     // FIXME: need to somehow expand the instantiated variable if we've case
-//     // split on it and given it a value.
-//     let new_lhs = instantiate_vars_fixpoint(lhs, &var_instantiations);
-//     let new_rhs = instantiate_vars_fixpoint(rhs, &var_instantiations);
-//     // println!("var_instantiations: {:?}, new lhs: {}, new rhs: {}", &var_instantiations, &new_lhs, &new_rhs);
-//     egraph.add_expr(&new_lhs);
-//     egraph.add_expr(&new_rhs);
-//   }
-// }
-
-fn find_parent_vars<'a>(vars: &'a [(String, Type)], var_name: &String) -> Vec<&'a (String, Type)> {
-  vars
-    .iter()
-    .filter(|(v_name, _v_type)| is_descendant(var_name, v_name) || v_name == var_name)
-    .collect()
-}
-
 /// When we do a case split we will instantiate a variable x to
 /// (Cons fresh_var1 fresh_var2 ...). We need to update our prev_instantiations
 /// to account for this equality. We will copy each past instantiation and add
@@ -410,25 +311,22 @@ fn instantiate_new_ih_equalities(
 }
 
 /// Proof goal
-pub struct Goal {
+pub struct Goal<'a> {
   /// Goal name
   pub name: String,
   /// Equivalences we already proved
   pub egraph: Eg,
   pub explanation: Option<Explanation<SymbolLang>>,
   /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
-  reductions: Vec<Rw>,
+  reductions: &'a Vec<Rw>,
   // TODO: Could be a hashmap
-  pub lemmas: Vec<(String, Pat, Pat, SmallerVar)>,
+  lemmas: Vec<(String, Pat, Pat, SmallerVar)>,
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
-  // /// The top-level universally-quanitifed variables used as the arugments for
-  // /// the proof: these are the roots of ty_splits
-  // pub top_level_variables: Vec<Symbol>,
   /// Map from a variable to its split (right now we only track data constructor
   /// splits)
-  pub ty_splits: HashMap<String, Sexp>,
+  ty_splits: HashMap<String, Sexp>,
   /// The top-level parameters to the goal
   pub params: Vec<String>,
   /// Variables we can case-split
@@ -436,50 +334,41 @@ pub struct Goal {
   scrutinees: VecDeque<Symbol>,
   /// Stores the expression each guard variable maps to. Since we only need
   /// these for proof emission, we just store the expression as a String.
-  pub guard_exprs: HashMap<String, String>,
-  pub prev_var_instantiations: Vec<HashMap<String, Sexp>>,
-  // TODO: add set tracking the variable instantiations we have so far
-  // used. this will be used to build up potential other instantiations we can
-  // use to "ground" the proving state in later iterations.
+  guard_exprs: HashMap<String, String>,
   // TODO: It almost feels like we could use an e-graph to track these past
   // instantiations, but we can't use the main e-graph because there's other stuff
   // that gets put into it.
-  // FIXME: vars/vars_descendents could be much more efficient using Symbols
-  /// The vars over which the theorem is quantified (including those introduced
-  /// by case splits)
-  pub vars: Vec<(String, Type)>,
-  /// The descendents of each of the vars
-  pub vars_descendents: HashMap<String, Vec<String>>,
+  prev_var_instantiations: Vec<HashMap<String, Sexp>>,
   /// Our goal is to prove lhs == rhs
-  pub lhs: Expr,
+  lhs: Expr,
   pub lhs_sexp: Sexp,
-  pub lhs_id: Id,
-  pub rhs: Expr,
+  lhs_id: Id,
+  rhs: Expr,
   pub rhs_sexp: Sexp,
-  pub rhs_id: Id,
+  rhs_id: Id,
   /// Environment
-  pub env: Env,
+  pub env: &'a Env,
   /// Global context (i.e. constructors and top-level bindings)
-  pub global_context: Context,
+  pub global_context: &'a Context,
   /// Definitions in a form amenable to proof emission
-  pub defns: Defns,
+  pub defns: &'a Defns,
 }
 
-impl Goal {
+impl<'a> Goal<'a> {
   /// Create top-level goal
   pub fn top(
     name: &str,
-    lhs: Expr,
     lhs_sexp: Sexp,
-    rhs: Expr,
     rhs_sexp: Sexp,
     params: Vec<(Symbol, Type)>,
-    env: &Env,
-    global_context: &Context,
-    reductions: &[Rw],
-    defns: Defns,
+    env: &'a Env,
+    global_context: &'a Context,
+    reductions: &'a Vec<Rw>,
+    defns: &'a Defns,
   ) -> Self {
     let mut egraph: Eg = EGraph::default().with_explanations_enabled();
+    let lhs = lhs_sexp.to_string().parse().unwrap();
+    let rhs = rhs_sexp.to_string().parse().unwrap();
     egraph.add_expr(&lhs);
     egraph.add_expr(&rhs);
     egraph.rebuild();
@@ -490,17 +379,13 @@ impl Goal {
       name: name.to_string(),
       egraph,
       explanation: None,
-      reductions: reductions.to_vec(),
+      reductions,
       lemmas: vec![],
       local_context: Context::new(),
       ty_splits: HashMap::new(),
       params: params.iter().map(|(p, _)| p.to_string()).collect(),
       guard_exprs: HashMap::new(),
       scrutinees: VecDeque::new(),
-      vars: params
-        .iter()
-        .map(|(param_symb, param_type)| (param_symb.to_string(), param_type.clone()))
-        .collect(),
       // The only instantiation we've considered thus far is where every param maps to itself.
       // We won't unify the LHS and RHS under this instantiation, though, because that would
       // immediately (and falsely) prove the theorem.
@@ -511,19 +396,14 @@ impl Goal {
         })
         .collect::<HashMap<String, Sexp>>()]
       .into(),
-      // Each param is its own descendent
-      vars_descendents: params
-        .iter()
-        .map(|(param_symb, _)| (param_symb.to_string(), vec![param_symb.to_string()]))
-        .collect(),
       lhs,
       lhs_sexp,
       lhs_id,
       rhs,
       rhs_sexp,
       rhs_id,
-      env: env.clone(),
-      global_context: global_context.clone(),
+      env,
+      global_context,
       defns,
     };
     for (name, ty) in params {
@@ -533,39 +413,30 @@ impl Goal {
     res
   }
 
-  pub fn clone(&self) -> Self {
+  pub fn copy(&self) -> Self {
     Goal {
       name: self.name.clone(),
       egraph: self.egraph.clone(),
       // If we reach this point, I think we won't have an explanation
       explanation: None,
-      reductions: self.reductions.clone(),
-      lemmas: self
-        .lemmas
-        .iter()
-        .chain(self.lemmas.iter())
-        .cloned()
-        .collect(),
+      reductions: self.reductions,
+      lemmas: self.lemmas.clone(),
       local_context: self.local_context.clone(),
       ty_splits: self.ty_splits.clone(),
       params: self.params.clone(),
       guard_exprs: self.guard_exprs.clone(),
       scrutinees: self.scrutinees.clone(),
       prev_var_instantiations: self.prev_var_instantiations.clone(),
-      vars: self.vars.clone(),
-      vars_descendents: self.vars_descendents.clone(),
       lhs: self.lhs.clone(),
       lhs_sexp: self.lhs_sexp.clone(),
-      // lhs: var_rec_expr.clone(),
       lhs_id: self.lhs_id,
-      // Putting a dummy value for now; We'll set this later once we create con_app.
       rhs: self.rhs.clone(),
       rhs_sexp: self.rhs_sexp.clone(),
       rhs_id: self.rhs_id,
-      env: self.env.clone(),
-      global_context: self.global_context.clone(),
+      env: self.env,
+      global_context: self.global_context,
       // NOTE: We don't really need to clone this.
-      defns: self.defns.clone(),
+      defns: self.defns,
     }
   }
 
@@ -619,7 +490,7 @@ impl Goal {
     let mut local_graph: Eg = Default::default();
     local_graph.add_expr(expr);
     local_graph.rebuild();
-    for reduction in &self.reductions {
+    for reduction in self.reductions {
       if !reduction.search(&local_graph).is_empty() {
         return true;
       }
@@ -637,9 +508,9 @@ impl Goal {
     let is_var = |v| self.local_context.contains_key(v);
 
     let mut rewrites = vec![];
-    for _rhs_expr in exprs.get(&rhs_id).unwrap() {
-      // warn!("equivalence for lemma rhs {} and goal rhs: {}", rhs_expr, self.egraph.explain_equivalence(rhs_expr, &self.rhs).get_flat_string());
-    }
+    // for _rhs_expr in exprs.get(&rhs_id).unwrap() {
+    //   // warn!("equivalence for lemma rhs {} and goal rhs: {}", rhs_expr, self.egraph.explain_equivalence(rhs_expr, &self.rhs).get_flat_string());
+    // }
     for lhs_expr in exprs.get(&lhs_id).unwrap() {
       // warn!("equivalence for lemma lhs {} and goal lhs: {}", lhs_expr, self.egraph.explain_equivalence(lhs_expr, &self.lhs).get_flat_string());
       let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
@@ -656,6 +527,7 @@ impl Goal {
         }
         let condition = SmallerVar {
           scrutinees: self.scrutinees.iter().cloned().collect(),
+          // TODO: Can we take a reference instead of cloning?
           ty_splits: self.ty_splits.clone(),
         };
         let mut added_lemma = false;
@@ -682,101 +554,6 @@ impl Goal {
     }
     rewrites
   }
-
-  // /// Create rewrites `lhs => lhs'` and `rhs => rhs'` which will be used with the IH in lieu of cyclic lemmas.
-  // fn mk_half_lemma_rewrites(&mut self, state: &ProofState) -> Vec<(String, Pat, Pat, SmallerVar)> {
-  //   let lhs_id = self.egraph.find(self.lhs_id);
-  //   let rhs_id = self.egraph.find(self.rhs_id);
-  //   let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
-  //   let is_var = |v| self.local_context.contains_key(v);
-
-  //   let original_lhs_sexp = parser::parse_str(&self.lhs.to_string()).unwrap();
-  //   let resolved_original_lhs_sexp = resolve_sexp(&original_lhs_sexp, &self.ty_splits);
-  //   let resolved_original_lhs: Expr = resolved_original_lhs_sexp.to_string().parse().unwrap();
-  //   let resolved_original_lhs_pat: Pattern<SymbolLang> = to_pattern(&resolved_original_lhs, is_var);
-
-  //   let original_rhs_sexp = parser::parse_str(&self.rhs.to_string()).unwrap();
-  //   let resolved_original_rhs_sexp = resolve_sexp(&original_rhs_sexp, &self.ty_splits);
-  //   let resolved_original_rhs: Expr = resolved_original_rhs_sexp.to_string().parse().unwrap();
-  //   let resolved_original_rhs_pat: Pattern<SymbolLang> = to_pattern(&resolved_original_rhs, is_var);
-
-  //   let mut rewrites = vec![];
-  //   for lhs_expr in exprs.get(&lhs_id).unwrap() {
-  //     if state.timeout() {
-  //       return rewrites;
-  //     }
-  //     let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
-  //     if lhs == resolved_original_lhs_pat {
-  //       continue;
-  //     }
-  //     if (CONFIG.irreducible_only && self.is_reducible(lhs_expr)) || has_guard_wildcards(&lhs) {
-  //       continue;
-  //     }
-  //     let condition = SmallerVar {
-  //       scrutinees: self.scrutinees.iter().cloned().collect(),
-  //       ty_splits: self.ty_splits.clone(),
-  //     };
-  //     let mut added_lemma = false;
-  //     if resolved_original_lhs_pat
-  //       .vars()
-  //       .iter()
-  //       .all(|x| lhs.vars().contains(x))
-  //     {
-  //       // if original_lhs has no extra wildcards, create a lemma lhs => original_lhs
-  //       self.add_lemma(
-  //         lhs.clone(),
-  //         resolved_original_lhs_pat.clone(),
-  //         condition.clone(),
-  //         &mut rewrites,
-  //       );
-  //       added_lemma = true;
-  //     }
-  //     if !added_lemma {
-  //       warn!(
-  //         "cannot create a lemma from {} and {}",
-  //         lhs, resolved_original_lhs_pat
-  //       );
-  //     }
-  //   }
-  //   for rhs_expr in exprs.get(&rhs_id).unwrap() {
-  //     if state.timeout() {
-  //       return rewrites;
-  //     }
-  //     let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
-  //     if rhs == resolved_original_rhs_pat {
-  //       continue;
-  //     }
-  //     if (CONFIG.irreducible_only && self.is_reducible(rhs_expr)) || has_guard_wildcards(&rhs) {
-  //       continue;
-  //     }
-  //     let condition = SmallerVar {
-  //       scrutinees: self.scrutinees.iter().cloned().collect(),
-  //       ty_splits: self.ty_splits.clone(),
-  //     };
-  //     let mut added_lemma = false;
-  //     if resolved_original_rhs_pat
-  //       .vars()
-  //       .iter()
-  //       .all(|x| rhs.vars().contains(x))
-  //     {
-  //       // if original_rhs has no extra wildcards, create a lemma rhs => original_rhs
-  //       self.add_lemma(
-  //         rhs.clone(),
-  //         resolved_original_rhs_pat.clone(),
-  //         condition.clone(),
-  //         &mut rewrites,
-  //       );
-  //       added_lemma = true;
-  //     }
-  //     if !added_lemma {
-  //       warn!(
-  //         "cannot create a lemma from {} and {}",
-  //         rhs, resolved_original_rhs_pat
-  //       );
-  //     }
-  //   }
-  //   rewrites
-  // }
 
   /// Add a rewrite `lhs => rhs` to `rewrites` if not already present
   fn add_lemma(
@@ -841,7 +618,9 @@ impl Goal {
       let fresh_var = Symbol::from(format!("{}{}", GUARD_PREFIX, guard_id));
       // This is here only for logging purposes
       let expr = Extractor::new(&self.egraph, AstSize).find_best(guard_id).1;
-      warn!("adding scrutinee {} to split condition {}", fresh_var, expr);
+      let add_scrutinee_message =
+        format!("adding scrutinee {} to split condition {}", fresh_var, expr);
+      warn!("{}", add_scrutinee_message);
       self
         .local_context
         .insert(fresh_var, BOOL_TYPE.parse().unwrap());
@@ -850,7 +629,6 @@ impl Goal {
       self.scrutinees.push_front(fresh_var);
       let new_node = SymbolLang::leaf(fresh_var);
       let new_pattern_ast = vec![ENodeOrVar::ENode(new_node.clone())].into();
-      let _new_id = self.egraph.add(SymbolLang::leaf(fresh_var));
       let guard_var_pattern_ast = vec![ENodeOrVar::Var(guard_var)].into();
       self
         .guard_exprs
@@ -859,40 +637,28 @@ impl Goal {
         &guard_var_pattern_ast,
         &new_pattern_ast,
         &subst,
-        "add guard scrutinee",
+        add_scrutinee_message,
       );
     }
     self.egraph.rebuild();
   }
 
   /// Consume this goal and add its case splits to the proof state
-  fn case_split(mut self, state: &mut ProofState, mk_lemmas: bool) {
-    let lemmas = if mk_lemmas {
+  fn case_split(mut self, state: &mut ProofState<'a>, mk_lemmas: bool) {
+    let new_lemmas = if mk_lemmas {
       self.mk_lemma_rewrites(state)
     } else {
       vec![]
     };
-    // if mk_lemmas {
-    //   for lemma in &lemmas {
-    //     warn!("Creating lemma {}", lemma.0);
-    //   }
-    // }
-
+    // Create rewrites `lhs => lhs'` and `rhs => rhs'` which will be used with the IH in lieu of cyclic lemmas.
     // let half_lemmas = self.mk_half_lemma_rewrites(state);
-    // for lemma in &half_lemmas {
-    //   warn!("Creating half lemma {}", lemma.0);
-    // }
-    // let half_lemmas = vec!();
 
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
     let var_str = var.to_string();
     warn!("case-split on {}", var);
     let var_node = SymbolLang::leaf(var);
-    let _var_rec_expr: RecExpr<SymbolLang> = vec![var_node.clone()].into();
-    let var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> =
-      vec![ENodeOrVar::ENode(var_node.clone())].into();
-    let _var_id = self.egraph.lookup(var_node).unwrap();
+    let var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec![ENodeOrVar::ENode(var_node)].into();
     // Get the type of the variable, and then remove the variable
     if self.local_context.get(&var).is_none() {
       panic!("{} not in local context", var);
@@ -907,48 +673,23 @@ impl Goal {
     // For each constructor, create a new goal and push it onto the proof state
     // (we process constructors in reverse order so that base case ends up at the top of the stack)
     for &con in cons.iter().rev() {
-      let mut new_goal = Goal {
-        name: format!("{}:", self.name),
-        egraph: self.egraph.clone(),
-        // If we reach this point, I think we won't have an explanation
-        explanation: None,
-        reductions: self.reductions.clone(),
-        lemmas: self.lemmas.iter().chain(lemmas.iter()).cloned().collect(),
-        // self.lemmas.iter().chain(half_lemmas.iter()).cloned().collect(),
-        local_context: self.local_context.clone(),
-        ty_splits: self.ty_splits.clone(),
-        params: self.params.clone(),
-        guard_exprs: self.guard_exprs.clone(),
-        scrutinees: self.scrutinees.clone(),
-        prev_var_instantiations: self.prev_var_instantiations.clone(),
-        vars: self.vars.clone(),
-        vars_descendents: self.vars_descendents.clone(),
-        lhs: self.lhs.clone(),
-        // lhs: var_rec_expr.clone(),
-        lhs_id: self.lhs_id,
-        lhs_sexp: self.lhs_sexp.clone(),
-        // Putting a dummy value for now; We'll set this later once we create con_app.
-        rhs: self.rhs.clone(),
-        rhs_id: self.rhs_id,
-        rhs_sexp: self.rhs_sexp.clone(),
-        env: self.env.clone(),
-        global_context: self.global_context.clone(),
-        defns: self.defns.clone(),
-      };
+      let mut new_goal = self.copy();
+      new_goal.name = format!("{}:", self.name);
+      if mk_lemmas {
+        new_goal.lemmas = self
+          .lemmas
+          .iter()
+          .chain(new_lemmas.iter())
+          .cloned()
+          .collect();
+      }
 
       // Get the types of constructor arguments
       let con_ty = self.global_context.get(&con).unwrap();
       let con_args = Goal::instantiate_constructor(con_ty, ty);
       // For each argument: create a fresh variable and add it to the context and to scrutinees
       let mut fresh_vars = vec![];
-      // let mut instantiated_egraphs = vec![];
 
-      // FIXME: Hack to deal with modification that happens inside the next for
-      // loop. Maybe the right thing to do is to just keep a temporary vec of
-      // what vars we're adding and add it after we're done iterating, like with
-      // fresh_vars.
-      let vars_clone = self.vars.clone();
-      let parent_vars = find_parent_vars(&vars_clone, &var_str);
       for (i, arg_type) in con_args.iter().enumerate() {
         let fresh_var_name = format!("{}_{}{}", var, self.egraph.total_size(), i);
         let depth = var_depth(&fresh_var_name[..]);
@@ -957,37 +698,27 @@ impl Goal {
         // Add new variable to context
         new_goal.local_context.insert(fresh_var, arg_type.clone());
         new_goal.add_scrutinee(fresh_var, arg_type, depth);
-        new_goal
-          .vars
-          .push((fresh_var_name.clone(), arg_type.clone()));
-        new_goal
-          .vars_descendents
-          .insert(fresh_var_name.clone(), vec![fresh_var_name.clone()]);
-        for (parent_var, parent_var_type) in parent_vars.iter() {
-          // This var is a descendent of each ancestor.
-          if arg_type == parent_var_type {
-            if let Some(descendents) = new_goal.vars_descendents.get_mut(parent_var) {
-              descendents.push(fresh_var_name.clone());
-            } else {
-              new_goal.vars_descendents.insert(
-                parent_var.clone(),
-                vec![parent_var.clone(), fresh_var_name.clone()],
-              );
-            }
-          }
-        }
         if !mk_lemmas {
+          // Find all vars that this variable descends from.
+          //
+          // TODO: this can be pulled out of both for loops. It will require
+          // some logic to add another variable (the parent).
           let ancestors: Vec<String> = self
-            .vars
+            .local_context
             .iter()
             .flat_map(|(ancestor_var, ancestor_type)| {
-              if ancestor_type == arg_type && is_descendant(&fresh_var_name, ancestor_var) {
-                Some(ancestor_var.clone())
+              if ancestor_type == arg_type && is_descendant(&fresh_var_name, ancestor_var.as_str())
+              {
+                Some(ancestor_var.to_string())
               } else {
                 None
               }
             })
             .collect();
+          // TODO: Can this be made more efficient by only once computing the
+          // new possible instantiations for each constructor arg? Perhaps also
+          // even for each case split? And then we would just take those
+          // instantiations and use them for each fresh variable.
           instantiate_new_ih_equalities(
             &mut new_goal.egraph,
             &mut new_goal.prev_var_instantiations,
@@ -998,17 +729,17 @@ impl Goal {
             &new_goal.params,
           );
         }
-
-        // if arg_type == ty {
-        //   warn!("specializing {} to {}", var, fresh_var);
-        //   let mut instantiated_egraph = new_goal.egraph.clone();
-        //   let new_var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec!(ENodeOrVar::ENode(SymbolLang::leaf(fresh_var))).into();
-        //   instantiated_egraph.union_instantiations(&var_pattern_ast, &new_var_pattern_ast, &Subst::default(), format!("{} specialize lemmas", new_goal.name));
-        //   instantiated_egraph.rebuild();
-        //   // Remove the variable from the egraph
-        //   remove_node(&mut instantiated_egraph, &SymbolLang::leaf(var));
-        //   instantiated_egraphs.push(instantiated_egraph);
-        // }
+        // NOTE If we are adding a new variable with the same type as its parent,
+        // then we might be losing information about it.
+        //
+        // For example, if we case split x = S x', we simply add x' to the
+        // e-graph with no new information about it. But all equalities
+        // involving x are also true of x' because it is smaller than x.
+        //
+        // We resolve this when mk_lemmas is false by calling out to
+        // instantiate_new_ih_euqalities (the idea being that all facts about x
+        // are derived from its presence in the IH), but if we had a faster way
+        // of copying the facts about x to x' that could make things easier.
       }
 
       // Create an application of the constructor to the fresh vars
@@ -1022,23 +753,25 @@ impl Goal {
           .join(" ")
       );
       let con_app_sexp = parser::parse_str(&con_app_string).unwrap();
+      // This is a split we need to track
       new_goal
         .ty_splits
         .insert(var_str.clone(), con_app_sexp.clone());
+      // also in all of the conditions in the lemmas (there is probably a better
+      // way to do this...)
+      for (_, _, _, smaller_var) in new_goal.lemmas.iter_mut() {
+        smaller_var
+          .ty_splits
+          .insert(var_str.clone(), con_app_sexp.clone());
+      }
+      // We also need to add this split to the prev_var_instantiations
       add_con_app_to_prev_instantiations(
         &mut new_goal.prev_var_instantiations,
         &var_str,
         &con_app_sexp,
         fresh_var_strings_iter,
       );
-      for lemma in new_goal.lemmas.iter_mut() {
-        lemma
-          .3
-          .ty_splits
-          .insert(var_str.clone(), con_app_sexp.clone());
-      }
       let con_app: Expr = con_app_string.parse().unwrap();
-      // new_goal.rhs = con_app.clone();
 
       new_goal.name = format!("{}{}={}", new_goal.name, var, con_app);
 
@@ -1058,40 +791,10 @@ impl Goal {
 
       // Remove old variable from the egraph and context
       remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
-      warn!("removing var {}", var);
+      // warn!("removing var {}", var);
       // FIXME: is this OK? add a full_context?
       // new_goal.local_context.remove(&var);
       new_goal.egraph.rebuild();
-
-      // println!("egraph size before: {}", new_goal.egraph.total_size());
-      // println!("egraph before: {:?}", new_goal.egraph); //new_goal.egraph.classes().map(|class| format!("{:?}", class)).collect::<String>());
-      // // Union the other lemma instantiations
-      // for instantiated_egraph in instantiated_egraphs {
-      //   // new_goal.egraph.egraph_union(&instantiated_egraph);
-      //   let right_unions = instantiated_egraph.get_union_equalities();
-      //   for (left, right, why) in right_unions {
-      //     let left_pattern = instantiated_egraph.id_to_pattern(left, &Default::default()).0.ast;
-      //     let right_pattern = instantiated_egraph.id_to_pattern(right, &Default::default()).0.ast;
-      //     if left_pattern == var_pattern_ast || right_pattern == var_pattern_ast {
-      //       continue;
-      //     }
-      //     println!("union between {} and {}", left_pattern, right_pattern);
-      //     new_goal.egraph.union_instantiations(
-      //       &left_pattern,
-      //       &right_pattern,
-      //       &Default::default(),
-      //       why,
-      //     );
-      //   }
-      //   new_goal.egraph.rebuild();
-      // }
-      // println!("egraph size after: {}", new_goal.egraph.total_size());
-      // println!("egraph after: {}", new_goal.egraph.classes().map(|class| format!("{:?}", class)).collect::<String>());
-
-      // if !mk_lemmas {
-      //   instantiate_descendent_lhs_and_rhs(&mut new_goal.egraph, &self.lhs, &self.rhs, &new_goal.vars_descendents);
-      //   new_goal.egraph.rebuild();
-      // }
 
       // Add the subgoal to the proof state
       state.goals.push(new_goal);
@@ -1152,56 +855,11 @@ impl Goal {
     ret
   }
 
-  // // This was the hacky way that invovled instantiating using an e-graph
-  // fn instantiate_constructor(con_ty: &Type, actual: &Type) -> Vec<Type> {
-  //   let (args, ret) = con_ty.args_ret();
-  //   println!("args: {:?}, ret: {}, actual: {:?}", args, ret, actual);
-  //
-  //   // Add the actual datatype to a fresh egraph
-  //   let mut egraph: Eg = Default::default();
-  //   let actual_as_expr: Expr = format!("{}", actual).parse().unwrap();
-  //   egraph.add_expr(&actual_as_expr);
-  //   egraph.rebuild();
-  //
-  //   // Create a pattern from the generic return type of the constructor
-  //   let searcher: Pat = format!("{}", ret).parse().unwrap();
-  //   let vars = searcher.vars();
-  //   // This pattern should have a single match in the actual datatype (at the root)
-  //   let matches = searcher.search(&egraph);
-  //   assert_eq!(matches.len(), 1);
-  //   assert_eq!(matches[0].substs.len(), 1);
-  //   let subst = &matches[0].substs[0];
-  //   // Convert the substitution range from eclass ids to expressions
-  //   // (each one of these eclasses stores a single expression, since we only added the actual)
-  //   let extractor = Extractor::new(&egraph, AstSize);
-  //   let expr_subst = vars
-  //     .iter()
-  //     .zip(
-  //       vars
-  //         .iter()
-  //         .map(|v| extractor.find_best(*subst.get(*v).unwrap()).1),
-  //     )
-  //     .collect::<Vec<_>>();
-  //
-  //   let mut res = vec![];
-  //   // For each argument, substitute all vars with their values in expr subst
-  //   // (we do it using string replacement because RecExprs are so painful to work with;
-  //   // I tried to do this substitution in the egraph, but that creates problems with cycles)
-  //   for arg in args {
-  //     let mut arg_string = format!("{}", arg);
-  //     for (var, t) in expr_subst.iter() {
-  //       arg_string = arg_string.replace(&format!("{}", var), &format!("{}", t));
-  //     }
-  //     res.push(arg_string.parse().unwrap());
-  //   }
-  //   res
-  // }
-
   // /// Checks to see if we will prove True = False by proving this goal (or if it
   // /// has already been proven).
   // fn is_impossible(&self) -> bool {
-  //   let true_symb = Symbol::from(TRUE);
-  //   let false_symb = Symbol::from(FALSE);
+  //   let true_symb = Symbol::from(&*TRUE);
+  //   let false_symb = Symbol::from(&*FALSE);
   //   let true_e_class_opt = self.egraph.lookup(SymbolLang::leaf(true_symb));
   //   let false_e_class_opt = self.egraph.lookup(SymbolLang::leaf(false_symb));
   //   let lhs_id = self.egraph.find(self.lhs_id);
@@ -1210,6 +868,7 @@ impl Goal {
   //     if let Some(false_e_class) = false_e_class_opt {
   //       // println!("checking impossible: lhs_id:{} rhs_id:{} true_id:{} false_id:{}", lhs_id, rhs_id, true_e_class, false_e_class);
   //       return true_e_class == false_e_class
+  //       // Check if proving this case will derive bottom
   //         || (true_e_class == lhs_id && false_e_class == rhs_id)
   //         || (true_e_class == rhs_id && false_e_class == lhs_id);
   //     }
@@ -1236,24 +895,39 @@ pub enum ProofTerm {
   ///   S x' -> goal_2
   /// ```
   CaseSplit(String, Vec<(String, String)>),
-  // TODO: ITE splitting (probably can just get away with having a node like
-  // ITEIntro(String, Sexp, String) which we can implement as a let, e.g.
-  //   let g = x <= y in ...
-  // where ... corresponds to the CaseSplit goal identified by the last String.
+  /// The same thing as a case split, except instead of splitting on one of the
+  /// symbolic variables, we split on an expression.
+  ///
+  /// - Arg0: A fresh variable introduced that is equal to the expression
+  /// - Arg1: The expression we split on
+  /// - Arg2: List of cases we split on (same as above).
+  ///         There will always be two cases, corresponding to `True` and `False`.
+  ///
+  /// Example:
+  /// ```
+  /// ITESplit("g0", "(lt x y)", [("True", "goal_1"), ("False", "goal_2")])
+  /// ```
+  /// corresponds to the proof
+  /// ```
+  /// let g0 = lt x y in
+  ///   case g0 of
+  ///     True  -> goal_1
+  ///     False -> goal_2
+  /// ```
   ITESplit(String, String, Vec<(String, String)>),
 }
 
 /// A proof state is a list of subgoals,
 /// all of which have to be discharged
-pub struct ProofState {
-  pub goals: Vec<Goal>,
+pub struct ProofState<'a> {
+  pub goals: Vec<Goal<'a>>,
   pub solved_goal_explanation_and_context: HashMap<String, (Explanation<SymbolLang>, Context)>,
   pub impossible_goals: HashSet<String>,
   pub proof: HashMap<String, ProofTerm>,
   pub start_time: Instant,
 }
 
-impl ProofState {
+impl<'a> ProofState<'a> {
   // Has timeout been reached?
   pub fn timeout(&self) -> bool {
     CONFIG.timeout.is_some()
@@ -1399,9 +1073,6 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
       }
       return (Outcome::Unknown, state);
     }
-    let _goal_name = goal.name.clone();
-    // We used to always add lemmas if the goal was the initial goal, but now we never
-    // do it if make_cyclic_lemmas is false because we manually union the e-classes.
     goal.case_split(&mut state, make_cyclic_lemmas);
     if CONFIG.verbose {
       println!("{}", "Case splitting and continuing...".purple());

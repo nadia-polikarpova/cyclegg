@@ -84,13 +84,13 @@ pub fn explain_top(
   filename: &str,
   goal: &str,
   state: &mut ProofState,
-  lhs: Sexp,
-  rhs: Sexp,
-  params: Vec<String>,
-  top_level_vars: HashMap<Symbol, Type>,
-  defns: Defns,
-  env: Env,
-  global_context: Context,
+  lhs: &Sexp,
+  rhs: &Sexp,
+  params: &[String],
+  top_level_vars: &HashMap<Symbol, Type>,
+  defns: &Defns,
+  env: &Env,
+  global_context: &Context,
 ) -> String {
   let mut str_explanation = String::new();
 
@@ -125,25 +125,25 @@ pub fn explain_top(
   str_explanation.push('\n');
 
   // Haskell data declarations
-  str_explanation.push_str(&add_data_definitions(&env, &global_context));
+  str_explanation.push_str(&add_data_definitions(env, global_context));
 
   // Haskell definitions
-  str_explanation.push_str(&add_definitions(&defns, &global_context));
+  str_explanation.push_str(&add_definitions(defns, global_context));
 
   // (arg name, arg type), to be used in creating the type.
   let args: Vec<(String, String)> = params
-    .into_iter()
+    .iter()
     .map(|param| {
       (
         param.clone(),
-        convert_ty(&top_level_vars[&Symbol::from(&param)].repr),
+        convert_ty(&top_level_vars[&Symbol::from(param)].repr),
       )
     })
     .collect();
   // println!("{:?}", args);
 
   // Add the types and function definition stub
-  str_explanation.push_str(&add_proof_types_and_stub(goal, &lhs, &rhs, &args));
+  str_explanation.push_str(&add_proof_types_and_stub(goal, lhs, rhs, &args));
   str_explanation.push('\n');
 
   // Finally, we can do the proof explanation

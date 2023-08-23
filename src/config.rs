@@ -25,9 +25,6 @@ pub struct Args {
   pub save_graphs: bool,
   #[clap(short = 'r', long = "save-results")]
   pub save_results: bool,
-  /// Deprecated, use -p or --emit-proofs instead
-  #[clap(short = 'e', long = "explain-results")]
-  pub explain_results: bool,
   /// Emit proofs under the proofs directory in the output directory
   #[clap(short = 'p', long = "emit-proofs")]
   pub emit_proofs: bool,
@@ -97,13 +94,21 @@ impl Config {
   fn from_args(args: &Args) -> Self {
     // Make the output directory if it doesn't exist.
     create_dir_all(&args.output_directory).unwrap();
-    let emit_proofs = args.explain_results || args.emit_proofs;
+    let emit_proofs = args.emit_proofs;
     if emit_proofs {
       // Make the proofs directory if it doesn't exist.
       create_dir_all(&args.proofs_directory).unwrap();
     }
+    let mangle_names = !args.unmangled_names && emit_proofs;
     Self {
-      max_split_depth: args.max_split_depth,
+      max_split_depth: if mangle_names {
+        // Why the +1? Because mangling the names prepends a Cyclegg_ to
+        // everything, which means that our depth check (which naively looks at
+        // how many underscores there are) will return 1 greater than it should.
+        args.max_split_depth + 1
+      } else {
+        args.max_split_depth
+      },
       split_conditionals: !args.no_cond_split,
       single_rhs: args.single_rhs,
       irreducible_only: args.irreducible_only,
@@ -120,7 +125,7 @@ impl Config {
       verbose_proofs: args.verbose_proofs,
       output_directory: args.output_directory.clone(),
       proofs_directory: args.proofs_directory.clone(),
-      mangle_names: !args.unmangled_names && emit_proofs,
+      mangle_names,
       cyclic_proofs: args.cyclic_proofs,
       proof_comments: !args.no_proof_comments,
       prop: args.prop.clone(),

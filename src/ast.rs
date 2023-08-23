@@ -119,7 +119,7 @@ pub fn var_depth(var_name: &str) -> usize {
   var_name.matches('_').count()
 }
 
-pub fn is_descendant(var_name: &String, ancestor_name: &String) -> bool {
+pub fn is_descendant(var_name: &str, ancestor_name: &str) -> bool {
   var_name.starts_with(ancestor_name) && var_name.len() > ancestor_name.len()
 }
 
@@ -258,6 +258,8 @@ pub fn recursively_resolve_variable(var: &str, instantiations: &HashMap<String, 
     .unwrap_or_else(|| Sexp::String(var.to_string()))
 }
 
+// FIXME: we should track down where these singletons are coming from and
+// prevent them instead of fixing them
 pub fn fix_singletons(sexp: Sexp) -> Sexp {
   match sexp {
     Sexp::List(list) => {
