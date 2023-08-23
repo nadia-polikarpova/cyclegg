@@ -7,43 +7,90 @@
 (:: Z Nat)
 (:: S (-> (Nat) Nat))
 
-(data List (Nil Cons))
+(data List (a) (Nil Cons))
 (:: Nil  (List ?a)                    )
 (:: Cons (-> (?a (List ?a)) (List ?a)))
 
 (:: id (-> (?a) ?a))
-(=> (id ?x) ?x)
+(let id (?x) ?x)
 
 (:: add (-> (Nat Nat) Nat))
-(=> (add Z      ?y) ?y             )
-(=> (add (S ?x) ?y) (S (add ?x ?y)))
+(let add (Z      ?y) ?y             )
+(let add ((S ?x) ?y) (S (add ?x ?y)))
 
 (:: sub (-> (Nat Nat) Nat))
-(=> (sub ?x Z)          ?x         )
-(=> (sub Z ?y)          Z          )
-(=> (sub (S ?x) (S ?y)) (sub ?x ?y))
+(let sub (?x Z)          ?x         )
+(let sub (Z ?y)          Z          )
+(let sub ((S ?x) (S ?y)) (sub ?x ?y))
 
 (:: lt (-> (Nat Nat) Bool))
-(=> (lt ?x     Z     ) False     )
-(=> (lt Z      (S ?y)) True      )
-(=> (lt (S ?x) (S ?y)) (lt ?x ?y))
+(let lt (?x     Z     ) False     )
+(let lt (Z      (S ?y)) True      )
+(let lt ((S ?x) (S ?y)) (lt ?x ?y))
 
 (:: leq (-> (Nat Nat) Bool))
-(=> (leq Z      ?y) True           )
-(=> (leq (S ?x) Z ) False          )
-(=> (leq (S ?x) (S ?y)) (leq ?x ?y))
+(let leq (Z      ?y) True           )
+(let leq ((S ?x) Z ) False          )
+(let leq ((S ?x) (S ?y)) (leq ?x ?y))
+
+(:: eq (-> (Nat Nat) Bool))
+(let eq (Z      Z     ) True      )
+(let eq (Z      (S ?y)) False     )
+(let eq ((S ?x) Z     ) False     )
+(let eq ((S ?x) (S ?y)) (eq ?x ?y))
 
 (:: ite (-> (Bool ?a ?a) ?a))
-(=> (ite True ?x ?y ) ?x)
-(=> (ite False ?x ?y) ?y)
+(let ite (True ?x ?y ) ?x)
+(let ite (False ?x ?y) ?y)
 
 (:: head (-> (List ?a) ?a))
-(=> (head Nil) Z)
-(=> (head (Cons ?x ?xs)) ?x)
+(let head (Nil) Z)
+(let head ((Cons ?x ?xs)) ?x)
 
 (:: map (-> ((-> ?a ?b) (List ?a)) (List ?b)))
-(=> (map ?f Nil          ) Nil                          )
-(=> (map ?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
+(let map (?f Nil          ) Nil                          )
+(let map (?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
+
+(:: elem (-> (Nat (List Nat)) Bool))
+(let elem (?n Nil          ) False                            )
+(let elem (?n (Cons ?x ?xs)) (ite (eq ?n ?x) True (elem ?n ?xs)))
+
+(:: append (-> ((List ?a) (List ?a)) (List ?a)))
+(let append (Nil           ?ys) ?ys                       )
+(let append ((Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
+
+(data Test (A B))
+(:: A Test)
+(:: B (-> (Nat) Test))
+
+(:: testId (-> (Test) Nat))
+(let let testId A A)
+(let testId (B ?x) (B (natId ?x)))
+
+(:: natId (-> (Nat) Nat))
+(let natId Z Z)
+(let natId (S ?x) (S (natId ?x)))
+
+(=== weird (x) (Test)
+  (testId x)
+  x
+)
+
+(=== prop_natId (x) (Nat)
+  (natId x)
+  x
+)
+
+(=== funny (x) (Nat)
+  (ite (lt Z x) (eq x x) False)
+  False
+)
+
+(//
+(=== funny (x) (Nat)
+  (ite (lt Z x) (eq x x) False)
+  False
+)
 
 (=== good1 (n m) (Nat Nat)
   True
@@ -60,13 +107,82 @@
   x
 )
 
+)
+
 (=== good3 (xs) ((List Nat))
   (sub (head xs) (head xs))
   Z
 )
 
+( //
 (=== good4 (xs) ((List a))
   (map id xs)
   xs
 )
+
+(=== addComm (n m) (Nat Nat)
+  (add n m)
+  (add m n)
+)
+
+(=== good5 (n) (Nat)
+  (add (sub n n) n)
+  n
+)
+
+(=== n_sn (n) (Nat)
+  (add n (S n))
+  (S (add n n))
+)
+
+(=== n_sn_provable (m n) (Nat)
+  (add m (S n))
+  (S (add m n))
+)
+
+(=== prop_69 (n m) (Nat Nat)
+  (leq n (add m n))
+  True
+)
+
+(// (let add (?x (S ?y)) (S (add ?x ?y))))
+(// (let leq ((add ?m ?n)) (leq (add ?m (S ?n)))))
+(// (let leq ((add ?m (S ?n))) (leq (add ?m ?n))))
+(=== prop_69_lem (n m) (Nat Nat)
+  (leq n (add m n))
+  (leq n (add m (S n)))
+)
+
+(// (=== right_s (n m) (Nat Nat)
+  (add m (S n))
+  (S (add m n))
+)
+
+(=== right_s_add (n m) (Nat Nat)
+  (add n (add m (S n)))
+  (add n (S (add m n)))
+)
+
+(=== right_s_add_k (k n m) (Nat Nat Nat)
+  (add k (add m (S n)))
+  (add k (S (add m n)))
+)
+
+(=== right_s_leq (n m) (Nat Nat)
+  (leq n (add m (S n)))
+  (leq n (S (add m n)))
+)
+
+(=== right_s_leq_k (k n m) (Nat Nat Nat)
+  (leq k (add m (S n)))
+  (leq k (S (add m n)))
+))
+
+(=== prop_28 (x xs) (Nat (List Nat))
+  (elem x (append xs (Cons x Nil)))
+  True
+)
+
+)
+
 )

@@ -1,0 +1,113 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.35.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           liquidhaskell-proofs
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/liquidhaskell-proofs#readme>
+homepage:       https://github.com/cole-k/cyclegg#readme
+bug-reports:    https://github.com/cole-k/cyclegg/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2023 Author name here
+license:        BSD3
+build-type:     Simple
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/cole-k/cyclegg
+
+library
+  exposed-modules:
+      Prop01NoCyclic
+      Prop02NoCyclic
+      Prop03NoCyclic
+      Prop04NoCyclic
+      Prop06NoCyclic
+      Prop07NoCyclic
+      Prop08NoCyclic
+      Prop09NoCyclic
+      Prop10NoCyclic
+      Prop11NoCyclic
+      Prop12NoCyclic
+      Prop13NoCyclic
+      Prop14NoCyclic
+      Prop15NoCyclic
+      Prop17NoCyclic
+      Prop18NoCyclic
+      Prop19NoCyclic
+      Prop21NoCyclic
+      Prop22NoCyclic
+      Prop23NoCyclic
+      Prop24NoCyclic
+      Prop25NoCyclic
+      Prop28NoCyclic
+      Prop29NoCyclic
+      Prop31NoCyclic
+      Prop32NoCyclic
+      Prop33NoCyclic
+      Prop34NoCyclic
+      Prop35NoCyclic
+      Prop36NoCyclic
+      Prop37NoCyclic
+      Prop38NoCyclic
+      Prop39NoCyclic
+      Prop40NoCyclic
+      Prop41NoCyclic
+      Prop42NoCyclic
+      Prop43NoCyclic
+      Prop44NoCyclic
+      Prop45NoCyclic
+      Prop46NoCyclic
+      Prop49NoCyclic
+      Prop50NoCyclic
+      Prop51NoCyclic
+      Prop52Manual
+      Prop52NoCyclic
+      Prop55NoCyclic
+      Prop56NoCyclic
+      Prop57NoCyclic
+      Prop58NoCyclic
+      Prop61NoCyclic
+      Prop64NoCyclic
+      Prop67NoCyclic
+      Prop75NoCyclic
+      Prop79NoCyclic
+      Prop80NoCyclic
+      Prop82NoCyclic
+      Prop83NoCyclic
+      Prop84NoCyclic
+      Prop86NoCyclic
+      Prop87NoCyclic
+      Prop88NoCyclic
+      Prop89NoCyclic
+      Prop90NoCyclic
+  other-modules:
+      Paths_liquidhaskell_proofs
+  hs-source-dirs:
+      src
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -fplugin=LiquidHaskell -Wno-unused-matches -Wno-missing-export-lists
+  build-depends:
+      base >=4.7 && <5
+    , liquid-prelude
+    , liquidhaskell >=0.8.10.0
+  default-language: Haskell2010
+
+test-suite liquidhaskell-proofs-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_liquidhaskell_proofs
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -fplugin=LiquidHaskell -Wno-unused-matches -Wno-missing-export-lists -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , liquid-prelude
+    , liquidhaskell >=0.8.10.0
+    , liquidhaskell-proofs
+  default-language: Haskell2010

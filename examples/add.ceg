@@ -4,11 +4,48 @@
 (:: S (-> (Nat) Nat))
 
 (:: add (-> (Nat Nat) Nat))
-(=> (add Z ?y) ?y)
-(=> (add (S ?x) ?y) (S (add ?x ?y)))
+(let add (Z ?y) ?y)
+(let add ((S ?x) ?y) (S (add ?x ?y)))
+
+(:: addAccum (-> (Nat Nat Nat) Nat))
+(let addAccum (Z Z ?acc) ?acc)
+(let addAccum (Z (S ?n) ?acc) (addAccum Z ?n (S ?acc)))
+(let addAccum ((S ?m) ?n ?acc) (addAccum ?m ?n (S ?acc)))
+
+(:: addAccum2 (-> (Nat Nat) Nat))
+(let addAccum2 (?m ?n) (addAccum ?m ?n Z))
 
 (=== add_commutative (n m) (Nat Nat)
   (add n m)
   (add m n)
 )
+
+(=== add_accum_move_s (a b c) (Nat Nat Nat)
+  (addAccum a b (S c))
+  (S (addAccum a b c))
+)
+
+(=== add_accum_lemma (a b c) (Nat Nat Nat)
+  ((=> (addAccum ?a ?b (S ?c)) (S (addAccum ?a ?b ?c))))
+  (addAccum a b c)
+  (add (add a b) c)
+)
+
+(// CycleQ can prove)
+(=== add_accum (a b c) (Nat Nat Nat)
+  (addAccum a b c)
+  (add (add a b) c)
+)
+
+(=== add_accum_commutative (a b c) (Nat Nat Nat)
+  (addAccum a b c)
+  (addAccum b a c)
+)
+
+(// CycleQ cannot prove)
+(=== add_accum2_commutative (a b) (Nat Nat)
+  (addAccum2 a b)
+  (addAccum2 b a)
+)
+
 )

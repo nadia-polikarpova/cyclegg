@@ -1,0 +1,32 @@
+(
+(data Bool (True False))
+(:: True Bool)
+(:: False Bool)
+
+(data List (a) (Nil Cons))
+(:: Nil  (List a)                    )
+(:: Cons (-> (a (List a)) (List a)))
+
+(:: ite (-> (Bool a a) a))
+(let ite (True ?x ?y ) ?x)
+(let ite (False ?x ?y) ?y)
+
+(:: append (-> ((List a) (List a)) (List a)))
+(let append (Nil           ?ys) ?ys                       )
+(let append ((Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
+
+(:: concat (-> (List (List a)) (List a)))
+(let concat (Nil) Nil)
+(let concat ((Cons ?xs ?xss)) (append ?xs (concat ?xss)))
+
+(:: weirdConcat (-> (List (List a)) (List a)))
+(let weirdConcat (Nil) Nil)
+(let weirdConcat ((Cons Nil ?xss)) (weirdConcat ?xss))
+(let weirdConcat ((Cons (Cons ?x ?xs) ?xss)) (Cons ?x (weirdConcat (Cons ?xs ?xss))))
+
+(=== weird_concat (xss) ((List (List a)))
+  (weirdConcat xss)
+  (concat xss)
+)
+
+)

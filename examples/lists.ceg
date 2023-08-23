@@ -61,7 +61,7 @@
 
 (:: elem (-> (Nat (List Nat)) Bool))
 (=> (elem ?n Nil          ) False                            )
-(=> (elem ?n (Cons ?x ?xs)) (ite (eq n x) True (elem ?n ?xs)))
+(=> (elem ?n (Cons ?x ?xs)) (ite (eq ?n ?x) True (elem ?n ?xs)))
 
 (:: take (-> (Nat (List ?a)) (List ?a)))
 (=> (take Z      ?xs          ) Nil                    )
@@ -137,7 +137,7 @@
 (:: sorted (-> ((List Nat)) Bool))
 (=> (sorted Nil                    ) True                                )
 (=> (sorted (Cons ?x Nil)          ) True                                )
-(=> (sorted (Cons ?x (Cons ?y ?ys))) (and (leq x y) (sorted (Cons y ys))))
+(=> (sorted (Cons ?x (Cons ?y ?ys))) (and (leq ?x ?y) (sorted (Cons ?y ?ys))))
 
 (:: zip (-> ((List ?a) (List ?b)) (List (Pair ?a ?b))))
 (=> (zip Nil           ?ys          ) Nil                              )

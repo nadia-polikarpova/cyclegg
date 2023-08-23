@@ -1,0 +1,220 @@
+\documentclass{article}[11pt]
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+
+\newcommand{\cyclegg}{\textsc{Cyclegg}}
+\newcommand{\add}[2]{\texttt{add}\ #1 \ #2}
+\newcommand{\next}[1]{S \, #1}
+
+\title{``Proof'' of equivalence between \cyclegg{} and equality-saturation-based proof using regular induction \\
+  \begin{large} In the context of equational reasoning \end{large}}
+
+\begin{document}
+
+\maketitle{}
+
+\section{Proof}
+
+We will prove equivalence between these two forms by showing that having a
+cyclic proof implies that there exists a proof only using the induction
+hypothesis (hereafter to be referred to as the IH). It follows that this implies
+there exists a cyclic proof if and only if there exists an ``uncycled'' proof
+using only the IH.
+
+\subsection{Proofs in \cyclegg{}}
+
+\subsubsection{General form}
+
+Proofs in \cyclegg{} may involve case splitting, but whenever we perform a case
+split (or if-then-else split) we create a list of sub-proofs on specializations
+of the original proof which combined imply the original proof. So we will
+consider an arbitrary proof of the equality between two terms: the LHS (for
+``left-hand side'') and RHS (for ``right-hand side'') with respect to some set
+of universally quantified variables \(V\). By reasoning in this general way, we
+can demonstrate how to uncycle an arbitrary sub-proof; if we know how to uncycle
+an arbitrary sub-proof, we can uncycle the whole proof, since the whole proof is
+just a list of sub-proofs for each case.
+
+\subsubsection{Rewrites}
+
+A sub-proof in \cyclegg{} consists of symbolic rewrites from the LHS to RHS.
+Some of these rewrites are axioms created from the definitions of functions. For
+example, we take it as an axiom that \(\forall n. \add Z n = n\). The other
+rewrites are lemmas that we generate before we case split.
+
+Before we case split, we look through each concrete term \(t_{lhs}\) that is
+equal to the LHS and each concrete term \(t_{rhs}\) that is equal to the RHS.
+Let \(\overline{v} \subseteq V\) be the variables shared between the two
+expressions.\footnote{Since none of our rewrites may introduce new variables, it
+  follows that \(t_{lhs}\) and \(t_{rhs}\) cannot have variables outside of
+  those in \(V\) but they may have fewer variables.} We posit as a lemma that
+\(\forall \overline{x}. t_{lhs}[\overline{v} \mapsto \overline{x}] = t_{rhs}[\overline{v} \mapsto \overline{x}]\)
+where \(\overline{x}\) is a list of fresh variables created for each
+\(\overline{v}\). Intuitively, this states you can instaniate the lemma
+\(t_{lhs} = t_{rhs}\) with terms that replace \(overline{v}\).
+
+This quantification isn't \emph{exactly} universal: we have a requirement that
+the lemma is invoked with instantiaions of variables in \(\overline{v}\) which
+are strictly structurally decreasing in at least one variable and not increasing
+in any other. The important point here is that this guarantees our use of the
+cyclic lemmas is logically sound.
+
+For example, suppose we have \(t_{lhs} = \add Z n\) and \(t_{rhs} = n\). The
+lemma we create from this is \(\forall x. \add Z x = x\), where instantiations
+of \(x\) must be structurally smaller than the symbolic variable \(n\).
+
+To summarize, a proof that LHS = RHS is a sequence of rewrites which are
+either axioms or lemmas. We may justify each rewrite by instantiating its
+universally quantified variables to match the sub-term that we are rewriting.
+
+\subsection{Cyclic lemma unrolling}
+
+Suppose now that we are using a cyclic lemma as part of the sub-proof that some
+specialization of the original LHS = some specialization of the original RHS. I
+claim that we can translate this sub-proof to use the IH instead.
+
+Let us consider how the lemma was generated. At some point prior we were trying
+to prove some specialization LHS' = RHS' in which some \(t_{lhs}'\) and
+\(t_{rhs}'\) were used to construct the lemma. We have a series of rewrites that
+justifies the equality between LHS' and \(t_{lhs}'\) as well as between RHS' and
+\(t_{rhs}'\) with respect to some set of universally quantified variables
+\(V'\).
+
+Suppose that this cyclic lemma is used to justify the equivalence between terms
+\(t_{1}\) and \(t_{2}\). In this case, we know that that \(t_{1}\) is an
+instantiation of \(t_{lhs}'\) and \(t_{2}\) is an instantiation of \(t_{rhs}'\).
+
+We know that we can rewrite \(t_{lhs}'\) to LHS'. And if we can rewrite LHS' to
+RHS', we can then rewrite RHS' to \(t_{rhs}'\).\footnote{In essence, supposing
+  that we can rewrite LHS' to RHS' justifies the cyclic lemma.} Our idea is to
+apply these same rewrites to \(t_{1}\) and argue that with the IH we can rewrite
+it to \(t_{2}\).
+
+Consider the rewrites justifying the equivalence between \(t_{lhs}'\) and LHS'.
+It is clear that for the rewrites which are axioms, we may also use them on
+\(t_{1}\) since they are universally quantified. However, we need to justify
+that the lemmas used on \(t_{lhs}'\) are usable on \(t_{1}\). This justification
+is simple: because we require any instantiation of the lemma to be on variables
+that are decreasing, the variables used in \(t_{1}\) must be valid for the same
+lemmas for which the variables of \(t_{lhs}'\) are valid.
+
+So we can rewrite \(t_{lhs}'\) so it looks like LHS'. Before we case split, we
+could not bridge the gap between LHS' and RHS'. However, we know that the
+rewritten \(t_{1}\) is over variables which are strictly decreasing with respect
+to the variables in \(t_{lhs}'\). It, therefore, is strictly decreasing with
+respect to the variables in the original LHS, because the variables in
+\(t_{lhs}'\) all may not be bigger than the variables in the original LHS. So
+the IH applies to the rewritten \(t_{1}\) and we may rewrite it again to look
+like RHS'. From this point, we can use the same justification we made for
+transforming \(t_{1}\) to look like \(t_{lhs}'\) to now bring it from the shape
+of RHS' to \(t_{rhs}'\). And this is exactly \(t_{2}\), as desired.
+
+\subsubsection{Case splits and if-then-else splits}
+
+The part that seems most hand-wavy here is the claim that the original IH would
+suffice even in a sub-proof. However, for case splits this make sense if you
+think about it.
+
+If your original proof is saying \(\forall n: \texttt{Nat} . x = y\), then its
+sub-proofs will look like \(x[n \mapsto Z] = y[n \mapsto Z]\) and
+\(\forall n': \texttt{Nat}. x[n \mapsto \next {n'}] = y[n \mapsto \next {n'}]\).
+It follows that the IH subsumes both of these cases: for the first, we may
+instantiate \(n = Z\) and for the second we may instantiate \(n = \next {n'}\).
+
+So though we sometimes need to justify the equivalence
+\(x[n \mapsto Z] = y[n \mapsto Z]\) using \(\forall n. x = y\), the latter will
+always suffice in the context of case splits.
+
+We may apply the same reasoning for if-then-else splitting, although there is a
+caveat. Because an if-then-else split applies to an entire expression \(e\), we
+need to be sure that it is actually possible for both the \texttt{true} and
+\texttt{false} cases to arise from instantiations of variables in \(e\) - if
+\(e\) is something like \texttt{x \&\& false}, we couldn't justify equivalence of
+one of the if-then-else splits (the \texttt{true} case). However it's not clear
+to me that cyclic lemmas would save us here. I think we have already made a
+mistake if we're trying to justify the \texttt{true} case of an expression that
+can never be true.
+
+\subsubsection{Multiple lemmas}
+
+This approach should work independently of how many lemmas there are since it
+demonstrates constructively how to remove an individual lemma's invocation, but
+does not affect any other parts of the proof.
+
+\subsubsection{Mutually recursive lemmas}
+
+What if a cyclic lemma \(\ell_{1}\) was used to justify the rewrites of another
+\(\ell_{2}\) and \(\ell_{2}\) was used to justify rewrites in\(\ell_{1}\)?
+Fortunately for us, I think this is impossible due to the fact that lemmas are
+created from terms deemed equivalent with respect to only axioms and older
+lemmas.
+
+\section{Example}
+
+As an example, let's consider proving that \(\add Z n = \add n Z\) with the standard
+definition of the natural numbers
+
+\[
+\begin{array}{lcl}
+  n &= & Z \\
+    &| & \next n
+\end{array}
+\]
+
+and the following axioms
+
+\[
+\begin{array}{ll}
+  (1) & \add Z n = n \\
+  (2) & \add {(\next m)} n = \next (\add m n)
+\end{array}
+\]
+
+One way of proving this theorem is to utilize a cyclic lemma that \(n = \add n Z\).
+
+This theorem requires a case split on \(n\): either \(n = Z\) or \(n = \next n'\). The
+\(n = Z\) case follows immediately because \(\add Z Z = \add Z Z\). We may prove the
+\(n = \next n'\) case as follows
+
+\[
+\begin{array}{lll}
+  \add Z {(\next n')} & & \\
+  &= \next n' & (1) \\
+  &= \next (\add {n'} Z) & \text{lemma} \\
+  &= \add {(\next n')} Z & (2) \\
+\end{array}
+\]
+
+In order to propose the cyclic lemma \(n = \add n Z\), we know that \(n\) is in
+the same equality class as \(\add Z n\) and \(\add n Z\) is in the same equality
+class as \(\add n Z\). The latter is a trivial equality, but for the former we
+have a proof that for all \(n\), \(n = \add Z n\).
+
+We observe that the IH, though different in form, also demonstrates an equality
+between the \emph{same} two equality classes.
+
+So if we wanted to use the lemma to demonstrate that \(k = \add k Z\), we could
+instead do the following:
+
+\begin{enumerate}
+  \item Rewrite \(k\) to \(\add Z k\) using our proof that for all \(n\), \(n = \add Z n\).
+  \item Use the IH to rewrite \(\add Z k\) to \(\add k Z\).
+  \item For an arbitrary cyclic unrolling, we might have to make another step
+        from \(\add k Z\) to the desired term, but in this case the RHS of the
+        lemma and IH are the same.
+\end{enumerate}
+
+Putting this to practice, we get the unrolled proof
+
+\[
+\begin{array}{lll}
+  \add Z {(\next n')} & & \\
+  &= \next n' & (1) \\
+  &= \next (\add Z {n'}) & (1) \\
+  &= \next (\add {n'} Z) & \text{IH} \\
+  &= \add {(\next n')} Z & (2) \\
+\end{array}
+\]
+
+\end{document}

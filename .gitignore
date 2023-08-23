@@ -1,1 +1,5 @@
 /target
+.liquid
+.DS_Store
+.stack-work
+.auctex-auto

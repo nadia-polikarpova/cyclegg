@@ -1,0 +1,42 @@
+(
+(data Bool (True False))
+(:: True Bool)
+(:: False Bool)
+
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(data List (a) (Nil Cons))
+(:: Nil  (List a)                  )
+(:: Cons (-> (a (List a)) (List a)))
+
+(:: ite (-> (Bool a a) a))
+(let ite (True ?x ?y)  ?x)
+(let ite (False ?x ?y) ?y)
+
+(:: sub (-> (Nat Nat) Nat))
+(let sub (?x Z)          ?x         )
+(let sub (Z ?y)          Z          )
+(let sub ((S ?x) (S ?y)) (sub ?x ?y))
+
+(:: len (-> ((List a)) Nat))
+(let len (Nil          ) Z            )
+(let len ((Cons ?x ?xs)) (S (len ?xs)))
+
+(:: take (-> (Nat (List a)) (List a)))
+(let take (Z      ?xs          ) Nil                    )
+(let take ((S ?n) Nil          ) Nil                    )
+(let take ((S ?n) (Cons ?x ?xs)) (Cons ?x (take ?n ?xs)))
+
+(:: butlast (-> ((List a)) (List a)))
+(let butlast (Nil                    ) Nil                              )
+(let butlast ((Cons ?x Nil)          ) Nil                              )
+(let butlast ((Cons ?x (Cons ?y ?ys))) (Cons ?x (butlast (Cons ?y ?ys))))
+
+(=== prop_50 (xs) ((List a))
+  (butlast xs)
+  (take (sub (len xs) (S Z)) xs)
+)
+
+)
