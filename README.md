@@ -9,13 +9,10 @@ cargo run -- examples/add.ceg
 
 ### TODO
 
-- prop_61: why cannot prove with List Nat?
+- Blocking variables analysis
+- Conditional equations
 - Make partial applications without $ work
-- Detect vacuous goals from condition splitting
 - Can all goals share the same e-graph?
-- Logging: how to print out which lemma we are applying?
-- Implement fancier termination checking
-- Try abducing lemmas by finding "almost matches" for current lemmas, and trying to prove that they are equivalent
 
 # Comparison to CycleQ
 
