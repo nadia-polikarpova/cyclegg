@@ -1,7 +1,7 @@
 use colored::Colorize;
 use egg::*;
 use log::warn;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use symbolic_expressions::{parser, Sexp};
 
@@ -10,8 +10,8 @@ use crate::config::*;
 use crate::egraph::*;
 
 // We will use SymbolLang with no analysis for now
-pub type Eg = EGraph<SymbolLang, ()>;
-pub type Rw = Rewrite<SymbolLang, ()>;
+pub type Eg = EGraph<SymbolLang, ConstructorFolding>;
+pub type Rw = Rewrite<SymbolLang, ConstructorFolding>;
 
 /// A special scrutinee name used to signal that case split bound has been exceeded
 const BOUND_EXCEEDED: &str = "__";
@@ -94,7 +94,7 @@ impl SmallerVar {
   }
 }
 
-impl Condition<SymbolLang, ()> for SmallerVar {
+impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
   /// Returns true if the substitution is into a smaller tuple of variables
   fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
     let extractor = Extractor::new(egraph, AstSize);
@@ -108,6 +108,51 @@ impl Condition<SymbolLang, ()> for SmallerVar {
       .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1)); // actually look up the expression by class id
                                                                 // Check that the expressions are smaller variables
     SmallerVar::smaller_tuple(&pairs.collect(), &self.ty_splits)
+  }
+}
+
+/// The set of constructors in an e-class.
+/// The order of variants is important: since we use the derived order during the merge.
+#[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Clone)]
+pub enum Constructors {
+  /// No constructors
+  Zero,
+  /// Single constructor
+  One(Symbol),
+  /// At least two different constructors (inconsistency)
+  Two(Symbol, Symbol),
+}
+
+#[derive(Default, Clone)]
+pub struct ConstructorFolding;
+
+impl Analysis<SymbolLang> for ConstructorFolding {
+  type Data = Constructors;
+
+  fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
+    // If we are merging classes with two different constructors,
+    // record that this class is now inconsistent
+    // (and remember both constructors, we'll need them to build an explanation)
+    if let Constructors::One(s1) = to {
+      if let Constructors::One(s2) = from {
+        if *s1 != s2 {
+          *to = Constructors::Two(*s1, s2);
+          return DidMerge(true, true);
+        } else {
+          // TODO: Unify their children
+        }
+      }
+    }
+    // Otherwise, just take the max constructor set
+    merge_max(to, from)
+  }
+
+  fn make(_: &EGraph<SymbolLang, Self>, enode: &SymbolLang) -> Self::Data {
+    if is_constructor(enode.op.into()) {
+      Constructors::One(enode.op)
+    } else {
+      Constructors::Zero
+    }
   }
 }
 
@@ -450,11 +495,6 @@ impl<'a> Goal<'a> {
     extractor.find_best(self.rhs_id).1
   }
 
-  /// Have we proven that lhs == rhs?
-  pub fn done(&self) -> bool {
-    self.egraph.find(self.lhs_id) == self.egraph.find(self.rhs_id)
-  }
-
   /// Saturate the goal by applying all available rewrites
   pub fn saturate(mut self) -> Self {
     // FIXME: don't collect/clone?
@@ -474,15 +514,40 @@ impl<'a> Goal<'a> {
       })
       .collect();
     let rewrites = self.reductions.iter().chain(lemmas.iter());
-    let mut runner = Runner::default()
+    let runner = Runner::default()
       .with_explanations_enabled()
       .with_egraph(self.egraph)
       .run(rewrites);
-    if runner.egraph.find(self.lhs_id) == runner.egraph.find(self.rhs_id) {
-      self.explanation = Some(runner.explain_equivalence(&self.lhs, &self.rhs))
-    }
     self.egraph = runner.egraph;
     self
+  }
+
+  /// Check if the goal has been discharged,
+  /// and if so, create an explanation.
+  pub fn check_validity(&mut self) {
+    if self.egraph.find(self.lhs_id) == self.egraph.find(self.rhs_id) {
+      // We have shown that LHS == RHS
+      self.explanation = Some(self.egraph.explain_equivalence(&self.lhs, &self.rhs));
+    } else {
+      // Check if this case in unreachable (i.e. if there are any inconsistent e-classes in the e-graph)
+      let res = self.egraph.classes().find_map(|eclass| {
+        if let Constructors::Two(s1, s2) = eclass.data {
+          if CONFIG.verbose {
+            println!("{}: {} = {}", "UNREACHABLE".bright_red(), s1, s2);
+          }
+          // This is here only for the purpose of proof generation:
+          let extractor = Extractor::new(&self.egraph, AstSize);
+          let expr1 = extract_with_node(eclass, &extractor, |enode| enode.op == s1).unwrap();
+          let expr2 = extract_with_node(eclass, &extractor, |enode| enode.op == s2).unwrap();
+          Some((expr1, expr2))
+        } else {
+          None
+        }
+      });
+      if let Some((expr1, expr2)) = res {
+        self.explanation = Some(self.egraph.explain_equivalence(&expr1, &expr2));
+      }
+    }
   }
 
   /// Check whether an expression is reducible using this goal's reductions
@@ -854,27 +919,6 @@ impl<'a> Goal<'a> {
     // println!("new types: {:?}", ret);
     ret
   }
-
-  // /// Checks to see if we will prove True = False by proving this goal (or if it
-  // /// has already been proven).
-  // fn is_impossible(&self) -> bool {
-  //   let true_symb = Symbol::from(&*TRUE);
-  //   let false_symb = Symbol::from(&*FALSE);
-  //   let true_e_class_opt = self.egraph.lookup(SymbolLang::leaf(true_symb));
-  //   let false_e_class_opt = self.egraph.lookup(SymbolLang::leaf(false_symb));
-  //   let lhs_id = self.egraph.find(self.lhs_id);
-  //   let rhs_id = self.egraph.find(self.rhs_id);
-  //   if let Some(true_e_class) = true_e_class_opt {
-  //     if let Some(false_e_class) = false_e_class_opt {
-  //       // println!("checking impossible: lhs_id:{} rhs_id:{} true_id:{} false_id:{}", lhs_id, rhs_id, true_e_class, false_e_class);
-  //       return true_e_class == false_e_class
-  //       // Check if proving this case will derive bottom
-  //         || (true_e_class == lhs_id && false_e_class == rhs_id)
-  //         || (true_e_class == rhs_id && false_e_class == lhs_id);
-  //     }
-  //   }
-  //   false
-  // }
 }
 
 #[derive(Clone, Debug)]
@@ -922,7 +966,6 @@ pub enum ProofTerm {
 pub struct ProofState<'a> {
   pub goals: Vec<Goal<'a>>,
   pub solved_goal_explanation_and_context: HashMap<String, (Explanation<SymbolLang>, Context)>,
-  pub impossible_goals: HashSet<String>,
   pub proof: HashMap<String, ProofTerm>,
   pub start_time: Instant,
 }
@@ -984,8 +1027,9 @@ pub fn explain_goal_failure(goal: &Goal) {
       .join(" ");
     if child_rec_exprs.is_empty() {
       println!("({})", lhs_node);
+    } else {
+      println!("({} {})", lhs_node, child_rec_exprs);
     }
-    println!("({} {})", lhs_node, child_rec_exprs);
   }
   println!("{}", "RHS Nodes".cyan());
   for rhs_node in goal.egraph[goal.rhs_id].nodes.iter() {
@@ -1000,8 +1044,9 @@ pub fn explain_goal_failure(goal: &Goal) {
       .join(" ");
     if child_rec_exprs.is_empty() {
       println!("({})", rhs_node);
+    } else {
+      println!("({} {})", rhs_node, child_rec_exprs);
     }
-    println!("({} {})", rhs_node, child_rec_exprs);
   }
 }
 
@@ -1011,7 +1056,6 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
   let mut state = ProofState {
     goals: vec![goal],
     solved_goal_explanation_and_context: HashMap::default(),
-    impossible_goals: HashSet::default(),
     proof: HashMap::default(),
     start_time: Instant::now(),
   };
@@ -1029,6 +1073,7 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
     if CONFIG.save_graphs {
       goal.save_egraph();
     }
+    goal.check_validity();
     if let Some(mut explanation) = goal.explanation {
       // This goal has been discharged, proceed to the next goal
       if CONFIG.verbose {
@@ -1043,13 +1088,6 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
     if CONFIG.verbose {
       explain_goal_failure(&goal);
     }
-    // if goal.is_impossible() {
-    //   if CONFIG.verbose {
-    //     println!("{} {}: {}", "Proved case".bright_blue(), goal.name, "IMPOSSIBLE".bright_red());
-    //   }
-    //   state.impossible_goals.insert(goal.name);
-    //   continue;
-    // }
     warn!("goal scrutinees before split: {:?}", goal.scrutinees);
     goal.split_ite();
     warn!("goal scrutinees after split: {:?}", goal.scrutinees);

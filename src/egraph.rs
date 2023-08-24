@@ -1,11 +1,11 @@
 use egg::*;
 use std::collections::HashMap;
 
-// Denotation of an egraph (or its subgraph)
-// is a map from eclass ids to sets of expressions
+/// Denotation of an egraph (or its subgraph)
+/// is a map from eclass ids to sets of expressions
 type Denotation<L> = HashMap<Id, Vec<RecExpr<L>>>;
 
-// Compute the denotation of all roots in egraph, ignoring cycles
+/// Compute the denotation of all roots in egraph, ignoring cycles
 pub fn get_all_expressions<L: Language, A: Analysis<L>>(
   egraph: &EGraph<L, A>,
   roots: Vec<Id>,
@@ -17,7 +17,7 @@ pub fn get_all_expressions<L: Language, A: Analysis<L>>(
   memo
 }
 
-// Compute the denotation of eclass ignoring cycles and store it in memo
+/// Compute the denotation of eclass ignoring cycles and store it in memo
 fn collect_expressions<L: Language, A: Analysis<L>>(
   egraph: &EGraph<L, A>,
   eclass: Id,
@@ -68,9 +68,29 @@ fn collect_expressions<L: Language, A: Analysis<L>>(
   }
 }
 
-// Remove node from egraph
+/// Remove node from egraph
 pub fn remove_node<L: Language, A: Analysis<L>>(egraph: &mut EGraph<L, A>, node: &L) {
   for c in egraph.classes_mut() {
     c.nodes.retain(|n| n != node);
   }
+}
+
+/// Extract a term from eclass, whose root satisfies pred
+/// and children are extracted by extractor
+pub fn extract_with_node<L: Language, D, A: Analysis<L>, CF: CostFunction<L>, F>(
+  eclass: &EClass<L, D>,
+  extractor: &Extractor<CF, L, A>,
+  pred: F,
+) -> Option<RecExpr<L>>
+where
+  F: Fn(&L) -> bool,
+{
+  let extract_enode = |id| extractor.find_best(id).1;
+
+  for enode in eclass.iter() {
+    if pred(enode) {
+      return Some(enode.join_recexprs(extract_enode));
+    }
+  }
+  None
 }
