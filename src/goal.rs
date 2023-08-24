@@ -124,7 +124,12 @@ pub enum Constructors {
 }
 
 #[derive(Default, Clone)]
-pub struct ConstructorFolding;
+pub struct ConstructorFolding {
+  /// If we have merged two classes with the same constructor,
+  /// remember this, so that modify can unify their parameters
+  /// (making use of constructor injectivity)
+  pub merged_constructors: Option<(SymbolLang, SymbolLang)>
+}
 
 impl Analysis<SymbolLang> for ConstructorFolding {
   type Data = Constructors;
@@ -139,7 +144,9 @@ impl Analysis<SymbolLang> for ConstructorFolding {
           *to = Constructors::Two(n1.clone(), n2.clone());
           return DidMerge(true, true);
         } else {
-          // TODO: Unify their children
+          // Two terms with the same head constructor
+          self.merged_constructors = Some((n1.clone(), n2.clone()));
+          return DidMerge(false, true);
         }
       }
     }
@@ -154,16 +161,26 @@ impl Analysis<SymbolLang> for ConstructorFolding {
       Constructors::Zero
     }
   }
-}
 
-fn rec_expr_to_pattern_ast<L: Clone>(rec_expr: RecExpr<L>) -> RecExpr<ENodeOrVar<L>> {
-  let enode_or_vars: Vec<ENodeOrVar<L>> = rec_expr
-    .as_ref()
-    .iter()
-    .cloned()
-    .map(|node| ENodeOrVar::ENode(node))
-    .collect();
-  enode_or_vars.into()
+  fn modify(egraph: &mut EGraph<SymbolLang, Self>, _: Id) {
+    if let Some((n1, n2)) = egraph.analysis.merged_constructors.take() {
+      // The extraction is only here for logging purposes
+      let extractor = Extractor::new(egraph, AstSize);
+      let expr1 = extract_with_node(&n1, &extractor);
+      let expr2 = extract_with_node(&n2, &extractor);
+      if CONFIG.verbose && expr1.to_string() != expr2.to_string() {
+        println!("INJECTIVITY {} = {}", expr1, expr2);
+      }
+      // Unify the parameters of the two constructors
+      for (c1, c2) in n1.children.iter().zip(n2.children.iter()) {
+        let c1 = egraph.find(*c1);
+        let c2 = egraph.find(*c2);
+        if c1 != c2 {
+          egraph.union_trusted(c1, c2, format!("constructor-injective {} = {}", expr1, expr2));
+        }
+      }
+    }
+  }
 }
 
 /// When we do a case split we will instantiate a variable x to

@@ -75,6 +75,16 @@ pub fn remove_node<L: Language, A: Analysis<L>>(egraph: &mut EGraph<L, A>, node:
   }
 }
 
+pub fn rec_expr_to_pattern_ast<L: Clone>(rec_expr: RecExpr<L>) -> RecExpr<ENodeOrVar<L>> {
+  let enode_or_vars: Vec<ENodeOrVar<L>> = rec_expr
+    .as_ref()
+    .iter()
+    .cloned()
+    .map(|node| ENodeOrVar::ENode(node))
+    .collect();
+  enode_or_vars.into()
+}
+
 /// A term whose root is a given enode and children are extracted by extractor
 pub fn extract_with_node<L: Language, A: Analysis<L>, CF: CostFunction<L>>(
   enode: &L,
