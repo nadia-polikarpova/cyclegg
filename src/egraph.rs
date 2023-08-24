@@ -75,22 +75,11 @@ pub fn remove_node<L: Language, A: Analysis<L>>(egraph: &mut EGraph<L, A>, node:
   }
 }
 
-/// Extract a term from eclass, whose root satisfies pred
-/// and children are extracted by extractor
-pub fn extract_with_node<L: Language, D, A: Analysis<L>, CF: CostFunction<L>, F>(
-  eclass: &EClass<L, D>,
-  extractor: &Extractor<CF, L, A>,
-  pred: F,
-) -> Option<RecExpr<L>>
-where
-  F: Fn(&L) -> bool,
+/// A term whose root is a given enode and children are extracted by extractor
+pub fn extract_with_node<L: Language, A: Analysis<L>, CF: CostFunction<L>>(
+  enode: &L,
+  extractor: &Extractor<CF, L, A>  
+) -> RecExpr<L>
 {
-  let extract_enode = |id| extractor.find_best(id).1;
-
-  for enode in eclass.iter() {
-    if pred(enode) {
-      return Some(enode.join_recexprs(extract_enode));
-    }
-  }
-  None
+  enode.join_recexprs(|id| extractor.find_best(id).1)
 }

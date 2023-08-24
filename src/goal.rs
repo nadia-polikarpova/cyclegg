@@ -118,9 +118,9 @@ pub enum Constructors {
   /// No constructors
   Zero,
   /// Single constructor
-  One(Symbol),
+  One(SymbolLang),
   /// At least two different constructors (inconsistency)
-  Two(Symbol, Symbol),
+  Two(SymbolLang, SymbolLang),
 }
 
 #[derive(Default, Clone)]
@@ -133,10 +133,10 @@ impl Analysis<SymbolLang> for ConstructorFolding {
     // If we are merging classes with two different constructors,
     // record that this class is now inconsistent
     // (and remember both constructors, we'll need them to build an explanation)
-    if let Constructors::One(s1) = to {
-      if let Constructors::One(s2) = from {
-        if *s1 != s2 {
-          *to = Constructors::Two(*s1, s2);
+    if let Constructors::One(n1) = to {
+      if let Constructors::One(ref n2) = from {
+        if n1.op != n2.op {
+          *to = Constructors::Two(n1.clone(), n2.clone());
           return DidMerge(true, true);
         } else {
           // TODO: Unify their children
@@ -149,7 +149,7 @@ impl Analysis<SymbolLang> for ConstructorFolding {
 
   fn make(_: &EGraph<SymbolLang, Self>, enode: &SymbolLang) -> Self::Data {
     if is_constructor(enode.op.into()) {
-      Constructors::One(enode.op)
+      Constructors::One(enode.clone())
     } else {
       Constructors::Zero
     }
@@ -531,14 +531,14 @@ impl<'a> Goal<'a> {
     } else {
       // Check if this case in unreachable (i.e. if there are any inconsistent e-classes in the e-graph)
       let res = self.egraph.classes().find_map(|eclass| {
-        if let Constructors::Two(s1, s2) = eclass.data {
+        if let Constructors::Two(n1, n2) = &eclass.data {
           if CONFIG.verbose {
-            println!("{}: {} = {}", "UNREACHABLE".bright_red(), s1, s2);
+            println!("{}: {} = {}", "UNREACHABLE".bright_red(), n1.op, n2.op);
           }
           // This is here only for the purpose of proof generation:
           let extractor = Extractor::new(&self.egraph, AstSize);
-          let expr1 = extract_with_node(eclass, &extractor, |enode| enode.op == s1).unwrap();
-          let expr2 = extract_with_node(eclass, &extractor, |enode| enode.op == s2).unwrap();
+          let expr1 = extract_with_node(n1, &extractor);
+          let expr2 = extract_with_node(n2, &extractor);
           Some((expr1, expr2))
         } else {
           None
