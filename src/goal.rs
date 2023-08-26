@@ -128,7 +128,7 @@ pub struct ConstructorFolding {
   /// If we have merged two classes with the same constructor,
   /// remember this, so that modify can unify their parameters
   /// (making use of constructor injectivity)
-  pub merged_constructors: Option<(SymbolLang, SymbolLang)>
+  pub merged_constructors: Option<(SymbolLang, SymbolLang)>,
 }
 
 impl Analysis<SymbolLang> for ConstructorFolding {
@@ -176,7 +176,11 @@ impl Analysis<SymbolLang> for ConstructorFolding {
         let c1 = egraph.find(*c1);
         let c2 = egraph.find(*c2);
         if c1 != c2 {
-          egraph.union_trusted(c1, c2, format!("constructor-injective {} = {}", expr1, expr2));
+          egraph.union_trusted(
+            c1,
+            c2,
+            format!("constructor-injective {} = {}", expr1, expr2),
+          );
         }
       }
     }
@@ -295,7 +299,7 @@ fn instantiate_new_ih_equalities(
   var_ancestors: &[String],
   lhs: &Sexp,
   rhs: &Sexp,
-  params: &[String],
+  // params: &[String],
 ) {
   let new_instantiations: Vec<HashMap<String, Sexp>> = prev_instantiations
     .iter()
@@ -345,29 +349,8 @@ fn instantiate_new_ih_equalities(
       .to_string()
       .parse()
       .unwrap();
-    // println!("new lhs: {}, new rhs: {}", &new_lhs, &new_rhs);
-    // The instantiation as a string
-    let instantiation_str = params
-      .iter()
-      .map(|param| {
-        format!(
-          "{}={}",
-          param,
-          resolved_instantiation
-            .get(param)
-            // If the parameter isn't instantiated to anything,
-            // we can assume that it is unchanged.
-            .unwrap_or(&Sexp::String(param.clone()))
-        )
-      })
-      .collect::<Vec<String>>()
-      .join(",");
-    egraph.union_instantiations(
-      &new_lhs,
-      &new_rhs,
-      &Subst::default(),
-      format!("ih-equality-{}", instantiation_str),
-    );
+    egraph.add_expr(&new_lhs);
+    egraph.add_expr(&new_rhs);
   }
   prev_instantiations.extend(new_instantiations);
 }
@@ -583,18 +566,27 @@ impl<'a> Goal<'a> {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
-  fn mk_lemma_rewrites(&mut self, state: &ProofState) -> Vec<(String, Pat, Pat, SmallerVar)> {
+  fn mk_lemma_rewrites(
+    &mut self,
+    state: &ProofState,
+    is_cyclic: bool,
+  ) -> Vec<(String, Pat, Pat, SmallerVar)> {
     let lhs_id = self.egraph.find(self.lhs_id);
     let rhs_id = self.egraph.find(self.rhs_id);
-    let exprs = get_all_expressions(&self.egraph, vec![lhs_id, rhs_id]);
     let is_var = |v| self.local_context.contains_key(v);
 
+    let exprs = if is_cyclic {
+      // If we are doing cyclic proofs: make lemmas out of all LHS and RHS variants
+      get_all_expressions(&self.egraph, vec![lhs_id, rhs_id])
+    } else {
+      // Otherwise, only use the original LHS and RHS
+      vec![(lhs_id, vec![self.lhs.clone()]), (rhs_id, vec![self.rhs.clone()])]
+        .into_iter()
+        .collect()
+    };
+
     let mut rewrites = vec![];
-    // for _rhs_expr in exprs.get(&rhs_id).unwrap() {
-    //   // warn!("equivalence for lemma rhs {} and goal rhs: {}", rhs_expr, self.egraph.explain_equivalence(rhs_expr, &self.rhs).get_flat_string());
-    // }
     for lhs_expr in exprs.get(&lhs_id).unwrap() {
-      // warn!("equivalence for lemma lhs {} and goal lhs: {}", lhs_expr, self.egraph.explain_equivalence(lhs_expr, &self.lhs).get_flat_string());
       let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
       if (CONFIG.irreducible_only && self.is_reducible(lhs_expr)) || has_guard_wildcards(&lhs) {
         continue;
@@ -621,8 +613,10 @@ impl<'a> Goal<'a> {
             continue;
           };
         }
-        if lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
-          // if lhs has no extra wildcards, create a lemma rhs => lhs
+        if (is_cyclic || !added_lemma) && lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
+          // if lhs has no extra wildcards, create a lemma rhs => lhs;
+          // in non-cyclic mode, a single direction of IH is always sufficient
+          // (because grounding adds all instantiations we could possibly care about).
           self.add_lemma(rhs.clone(), lhs.clone(), condition, &mut rewrites);
           added_lemma = true;
           if CONFIG.single_rhs {
@@ -649,7 +643,7 @@ impl<'a> Goal<'a> {
     let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
     if !existing_lemmas.any(|lemma| lemma.0 == name) {
       // Only add the lemma if we don't already have it:
-      // warn!("creating lemma: {} => {}", lhs, rhs);
+      warn!("creating lemma: {} => {}", lhs, rhs);
       let lemma = (name, lhs, rhs, cond);
       rewrites.push(lemma);
     }
@@ -726,14 +720,8 @@ impl<'a> Goal<'a> {
   }
 
   /// Consume this goal and add its case splits to the proof state
-  fn case_split(mut self, state: &mut ProofState<'a>, mk_lemmas: bool) {
-    let new_lemmas = if mk_lemmas {
-      self.mk_lemma_rewrites(state)
-    } else {
-      vec![]
-    };
-    // Create rewrites `lhs => lhs'` and `rhs => rhs'` which will be used with the IH in lieu of cyclic lemmas.
-    // let half_lemmas = self.mk_half_lemma_rewrites(state);
+  fn case_split(mut self, state: &mut ProofState<'a>, is_cyclic: bool) {
+    let new_lemmas = self.mk_lemma_rewrites(state, is_cyclic);
 
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
@@ -742,10 +730,10 @@ impl<'a> Goal<'a> {
     let var_node = SymbolLang::leaf(var);
     let var_pattern_ast: RecExpr<ENodeOrVar<SymbolLang>> = vec![ENodeOrVar::ENode(var_node)].into();
     // Get the type of the variable, and then remove the variable
-    if self.local_context.get(&var).is_none() {
-      panic!("{} not in local context", var);
-    }
-    let ty = self.local_context.get(&var).unwrap();
+    let ty = match self.local_context.get(&var) {
+      Some(ty) => ty,
+      None => panic!("{} not in local context", var),
+    };
     // Convert to datatype name
     let dt = Symbol::from(ty.datatype().unwrap());
     // Get the constructors of the datatype
@@ -757,14 +745,12 @@ impl<'a> Goal<'a> {
     for &con in cons.iter().rev() {
       let mut new_goal = self.copy();
       new_goal.name = format!("{}:", self.name);
-      if mk_lemmas {
-        new_goal.lemmas = self
-          .lemmas
-          .iter()
-          .chain(new_lemmas.iter())
-          .cloned()
-          .collect();
-      }
+      new_goal.lemmas = self
+        .lemmas
+        .iter()
+        .chain(new_lemmas.iter())
+        .cloned()
+        .collect();
 
       // Get the types of constructor arguments
       let con_ty = self.global_context.get(&con).unwrap();
@@ -780,7 +766,8 @@ impl<'a> Goal<'a> {
         // Add new variable to context
         new_goal.local_context.insert(fresh_var, arg_type.clone());
         new_goal.add_scrutinee(fresh_var, arg_type, depth);
-        if !mk_lemmas {
+
+        if !is_cyclic {
           // Find all vars that this variable descends from.
           //
           // TODO: this can be pulled out of both for loops. It will require
@@ -808,7 +795,6 @@ impl<'a> Goal<'a> {
             &ancestors,
             &new_goal.lhs_sexp,
             &new_goal.rhs_sexp,
-            &new_goal.params,
           );
         }
         // NOTE If we are adding a new variable with the same type as its parent,
@@ -1068,7 +1054,7 @@ pub fn explain_goal_failure(goal: &Goal) {
 }
 
 /// Top-level interface to the theorem prover.
-pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) {
+pub fn prove(mut goal: Goal, is_cyclic: bool) -> (Outcome, ProofState) {
   // let initial_goal_name = goal.name.clone();
   let mut state = ProofState {
     goals: vec![goal],
@@ -1128,7 +1114,7 @@ pub fn prove(mut goal: Goal, make_cyclic_lemmas: bool) -> (Outcome, ProofState) 
       }
       return (Outcome::Unknown, state);
     }
-    goal.case_split(&mut state, make_cyclic_lemmas);
+    goal.case_split(&mut state, is_cyclic);
     if CONFIG.verbose {
       println!("{}", "Case splitting and continuing...".purple());
     }

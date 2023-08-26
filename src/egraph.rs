@@ -88,8 +88,7 @@ pub fn rec_expr_to_pattern_ast<L: Clone>(rec_expr: RecExpr<L>) -> RecExpr<ENodeO
 /// A term whose root is a given enode and children are extracted by extractor
 pub fn extract_with_node<L: Language, A: Analysis<L>, CF: CostFunction<L>>(
   enode: &L,
-  extractor: &Extractor<CF, L, A>  
-) -> RecExpr<L>
-{
+  extractor: &Extractor<CF, L, A>,
+) -> RecExpr<L> {
   enode.join_recexprs(|id| extractor.find_best(id).1)
 }
