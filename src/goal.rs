@@ -1,7 +1,7 @@
 use colored::Colorize;
 use egg::*;
 use log::warn;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque, hash_map::Entry};
 use std::time::{Duration, Instant};
 use symbolic_expressions::{parser, Sexp};
 
@@ -364,8 +364,7 @@ pub struct Goal<'a> {
   pub explanation: Option<Explanation<SymbolLang>>,
   /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
   reductions: &'a Vec<Rw>,
-  // TODO: Could be a hashmap
-  lemmas: Vec<(String, Pat, Pat, SmallerVar)>,
+  lemmas: HashMap<String, (Pat, Pat, SmallerVar)>,
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
@@ -425,7 +424,7 @@ impl<'a> Goal<'a> {
       egraph,
       explanation: None,
       reductions,
-      lemmas: vec![],
+      lemmas: HashMap::new(),
       local_context: Context::new(),
       ty_splits: HashMap::new(),
       params: params.iter().map(|(p, _)| p.to_string()).collect(),
@@ -465,7 +464,7 @@ impl<'a> Goal<'a> {
       // If we reach this point, I think we won't have an explanation
       explanation: None,
       reductions: self.reductions,
-      lemmas: self.lemmas.clone(),
+      lemmas: HashMap::new(), // the lemmas will be re-generated immediately anyway
       local_context: self.local_context.clone(),
       ty_splits: self.ty_splits.clone(),
       params: self.params.clone(),
@@ -501,7 +500,7 @@ impl<'a> Goal<'a> {
     let lemmas: Vec<Rw> = self
       .lemmas
       .iter()
-      .map(|(name, lhs, rhs, cond)| {
+      .map(|(name, (lhs, rhs, cond))| {
         Rewrite::new(
           name,
           lhs.clone(),
@@ -566,11 +565,11 @@ impl<'a> Goal<'a> {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
-  fn mk_lemma_rewrites(
+  fn add_lemma_rewrites(
     &mut self,
     state: &ProofState,
     is_cyclic: bool,
-  ) -> Vec<(String, Pat, Pat, SmallerVar)> {
+  ) -> HashMap<String, (Pat, Pat, SmallerVar)> {
     let lhs_id = self.egraph.find(self.lhs_id);
     let rhs_id = self.egraph.find(self.rhs_id);
     let is_var = |v| self.local_context.contains_key(v);
@@ -585,7 +584,7 @@ impl<'a> Goal<'a> {
         .collect()
     };
 
-    let mut rewrites = vec![];
+    let mut rewrites = self.lemmas.clone();
     for lhs_expr in exprs.get(&lhs_id).unwrap() {
       let lhs: Pattern<SymbolLang> = to_pattern(lhs_expr, is_var);
       if (CONFIG.irreducible_only && self.is_reducible(lhs_expr)) || has_guard_wildcards(&lhs) {
@@ -607,7 +606,7 @@ impl<'a> Goal<'a> {
         let mut added_lemma = false;
         if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
           // if rhs has no extra wildcards, create a lemma lhs => rhs
-          self.add_lemma(lhs.clone(), rhs.clone(), condition.clone(), &mut rewrites);
+          Goal::add_lemma(lhs.clone(), rhs.clone(), condition.clone(), &mut rewrites);
           added_lemma = true;
           if CONFIG.single_rhs {
             continue;
@@ -617,7 +616,7 @@ impl<'a> Goal<'a> {
           // if lhs has no extra wildcards, create a lemma rhs => lhs;
           // in non-cyclic mode, a single direction of IH is always sufficient
           // (because grounding adds all instantiations we could possibly care about).
-          self.add_lemma(rhs.clone(), lhs.clone(), condition, &mut rewrites);
+          Goal::add_lemma(rhs.clone(), lhs.clone(), condition, &mut rewrites);
           added_lemma = true;
           if CONFIG.single_rhs {
             continue;
@@ -633,19 +632,19 @@ impl<'a> Goal<'a> {
 
   /// Add a rewrite `lhs => rhs` to `rewrites` if not already present
   fn add_lemma(
-    &self,
     lhs: Pat,
     rhs: Pat,
     cond: SmallerVar,
-    rewrites: &mut Vec<(String, Pat, Pat, SmallerVar)>,
+    rewrites: &mut HashMap<String, (Pat, Pat, SmallerVar)>,
   ) {
     let name = format!("lemma-{}={}", lhs, rhs);
-    let mut existing_lemmas = self.lemmas.iter().chain(rewrites.iter());
-    if !existing_lemmas.any(|lemma| lemma.0 == name) {
-      // Only add the lemma if we don't already have it:
-      warn!("creating lemma: {} => {}", lhs, rhs);
-      let lemma = (name, lhs, rhs, cond);
-      rewrites.push(lemma);
+    // Insert the lemma into the rewrites map if it's not already there
+    match rewrites.entry(name) {
+      Entry::Occupied(_) => (),
+      Entry::Vacant(entry) => {
+        warn!("creating lemma: {} => {}", lhs, rhs);
+        entry.insert((lhs, rhs, cond));
+      }
     }
   }
 
@@ -721,7 +720,7 @@ impl<'a> Goal<'a> {
 
   /// Consume this goal and add its case splits to the proof state
   fn case_split(mut self, state: &mut ProofState<'a>, is_cyclic: bool) {
-    let new_lemmas = self.mk_lemma_rewrites(state, is_cyclic);
+    let new_lemmas = self.add_lemma_rewrites(state, is_cyclic);
 
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
@@ -745,12 +744,7 @@ impl<'a> Goal<'a> {
     for &con in cons.iter().rev() {
       let mut new_goal = self.copy();
       new_goal.name = format!("{}:", self.name);
-      new_goal.lemmas = self
-        .lemmas
-        .iter()
-        .chain(new_lemmas.iter())
-        .cloned()
-        .collect();
+      new_goal.lemmas = new_lemmas.clone();
 
       // Get the types of constructor arguments
       let con_ty = self.global_context.get(&con).unwrap();
@@ -827,7 +821,7 @@ impl<'a> Goal<'a> {
         .insert(var_str.clone(), con_app_sexp.clone());
       // also in all of the conditions in the lemmas (there is probably a better
       // way to do this...)
-      for (_, _, _, smaller_var) in new_goal.lemmas.iter_mut() {
+      for (_, (_, _, smaller_var)) in new_goal.lemmas.iter_mut() {
         smaller_var
           .ty_splits
           .insert(var_str.clone(), con_app_sexp.clone());

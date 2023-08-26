@@ -9,7 +9,6 @@ cargo run -- examples/add.ceg
 
 ### TODO
 
-- Make lemmas a hashmap
 - SmallerVars: get rid of ty_splits and use the egraph instead? Introduce an extractor for the most normal form.
 - Blocking variables analysis
 - Conditional equations
