@@ -42,6 +42,7 @@
 (:: ite (-> (Bool ?a ?a) ?a))
 (let ite (True ?x ?y ) ?x)
 (let ite (False ?x ?y) ?y)
+(let ite (?b    ?x ?x) ?x)
 
 (:: head (-> (List ?a) ?a))
 (let head (Nil) Z)
@@ -71,6 +72,10 @@
 (let natId Z Z)
 (let natId (S ?x) (S (natId ?x)))
 
+(:: len (-> ((List a)) Nat))
+(let len Nil             Z            )
+(let len ((Cons ?x ?xs)) (S (len ?xs)))
+
 (=== weird (x) (Test)
   (testId x)
   x
@@ -91,11 +96,26 @@
   False
 )
 
-(==> goodCond (n m) (Nat Nat)
+(==> goodCondNonRec (n m) (Nat Nat)
   (S n)
   (S m)
   n
   m
+)
+
+(==> goodCondRec (xs ys x) ((List Nat) (List Nat) Nat)
+  (elem x xs)
+  True
+  (elem x (append xs ys))
+  True
+)
+
+(// This is invalid but would go through if we weren't checking our conditions properly)
+(==> badCondRec (xs x) ((List Nat) Nat)
+  (lt Z (len xs))
+  True
+  (elem x xs)
+  True
 )
 
 (=== good1 (n m) (Nat Nat)

@@ -31,11 +31,8 @@ fn main() -> std::io::Result<()> {
   let mut cyclic_num_valid = 0;
   let mut non_cyclic_num_valid = 0;
   for raw_goal in parser_state.raw_goals.iter() {
-    let (reductions, defns) = parser_state.get_reductions_and_definitions(
-      &raw_goal.equation.lhs,
-      &raw_goal.equation.rhs,
-      raw_goal.local_rules.clone(),
-    );
+    let (reductions, defns) =
+      parser_state.get_reductions_and_definitions(&raw_goal, raw_goal.local_rules.clone());
     let mut goal = Goal::top(
       &raw_goal.name,
       &raw_goal.equation,

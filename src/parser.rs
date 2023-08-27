@@ -50,7 +50,7 @@ pub struct ParserState {
 impl ParserState {
   /// Return all function definitions used in exprs,
   /// including the functions transitively used in those definitions.
-  fn used_names_and_definitions(&self, exprs: Vec<&Expr>) -> (HashSet<Symbol>, Vec<Rw>) {
+  fn used_names_and_definitions(&self, exprs: &Vec<Expr>) -> (HashSet<Symbol>, Vec<Rw>) {
     let mut used_names = HashSet::new();
     let mut used_defs = vec![];
     let mut worklist = vec![];
@@ -154,13 +154,19 @@ impl ParserState {
   /// affect whether a goal has all definitions in scope.
   pub fn get_reductions_and_definitions(
     &self,
-    lhs_sexp: &Sexp,
-    rhs_sexp: &Sexp,
+    goal: &RawGoal,
     local_rules: Vec<Rw>,
   ) -> (Vec<Rw>, Defns) {
-    let lhs: Expr = lhs_sexp.to_string().parse().unwrap();
-    let rhs: Expr = rhs_sexp.to_string().parse().unwrap();
-    let (names, mut rules) = self.used_names_and_definitions(vec![&lhs, &rhs]);
+    let lhs: Expr = goal.equation.lhs.to_string().parse().unwrap();
+    let rhs: Expr = goal.equation.rhs.to_string().parse().unwrap();
+    let mut roots = vec![lhs, rhs];
+    if let Some(premise) = &goal.premise {
+      let premise_lhs: Expr = premise.lhs.to_string().parse().unwrap();
+      let premise_rhs: Expr = premise.rhs.to_string().parse().unwrap();
+      roots.push(premise_lhs);
+      roots.push(premise_rhs);
+    }
+    let (names, mut rules) = self.used_names_and_definitions(&roots);
     let filtered_defns = self
       .defns
       .iter()

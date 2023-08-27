@@ -12,7 +12,9 @@ cargo run -- examples/add.ceg
 - Add flag for grounding
 - SmallerVars: get rid of ty_splits and use the egraph instead? Introduce an extractor for the most normal form.
 - Blocking variables analysis
-- Conditional equations
+- Conditional props:
+    - Add condition instantiations to the egraph during grounding
+    - Proof generation: how to include the proof of the condition holding?
 - Make partial applications without $ work
 - Can all goals share the same e-graph?
 

@@ -23,7 +23,8 @@ pub const IH_EQUALITY_PREFIX: &str = "ih-equality-"; // TODO: remove
 #[derive(Clone)]
 pub struct SmallerVar {
   pub scrutinees: Vec<Symbol>,
-  pub ty_splits: HashMap<String, Sexp>,
+  pub ty_splits: SSubst,
+  pub premise: Option<Equation>,
 }
 
 impl SmallerVar {
@@ -40,7 +41,7 @@ impl SmallerVar {
   /// For now implements a sound but incomplete measure,
   /// where all components of the range need to be no larger, and at least one has to be strictly smaller.
   /// TODO: Implement a fancy automata-theoretic check here.
-  fn smaller_tuple(subst: &Vec<(&Symbol, Expr)>, ty_splits: &HashMap<String, Sexp>) -> bool {
+  fn smaller_tuple(subst: &Vec<(&Symbol, Expr)>, ty_splits: &SSubst) -> bool {
     let mut has_strictly_smaller = false;
     let info = SmallerVar::pretty_subst(subst.as_slice());
     for (var, expr) in subst {
@@ -95,6 +96,48 @@ impl SmallerVar {
     }
     has_strictly_smaller
   }
+
+  /// Apply subst to self.premise (if any)
+  /// and check whether the resulting terms are equal in the egraph
+  fn check_premise(
+    premise: &Option<Equation>,
+    subst: &Vec<(&Symbol, Expr)>,
+    egraph: &mut Eg,
+  ) -> bool {
+    match premise {
+      None => true,
+      Some(premise) => {
+        // let info = SmallerVar::pretty_subst(subst.as_slice());
+        // println!("checking premise {} = {} for {}", premise.lhs.sexp, premise.rhs.sexp, info);
+        let subst: SSubst = subst
+          .iter()
+          .map(|(var, expr)| {
+            (
+              var.to_string(),
+              symbolic_expressions::parser::parse_str(&expr.to_string()).unwrap(),
+            )
+          })
+          .collect();
+
+        let lhs = resolve_sexp(&premise.lhs.sexp, &subst);
+        let rhs = resolve_sexp(&premise.rhs.sexp, &subst);
+        // println!("{} == {}", lhs, rhs);
+        // convert to RecExprs:
+        let lhs: Expr = lhs.to_string().parse().unwrap();
+        let rhs: Expr = rhs.to_string().parse().unwrap();
+        // lookup the terms in the e-graph
+        // Is they are not there, we just say the condition is false
+        // TODO: add these terms to the e-graph as part of grounding.
+        if let Some(lhs_id) = egraph.lookup_expr(&lhs) {
+          if let Some(rhs_id) = egraph.lookup_expr(&rhs) {
+            // println!("{} == {}", lhs_id, rhs_id);
+            return lhs_id == rhs_id;
+          }
+        }
+        false
+      }
+    }
+  }
 }
 
 impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
@@ -108,9 +151,11 @@ impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
       .iter()
       .zip(target_ids_mb) // zip variables with their substitutions
       .filter(|(_, mb)| mb.is_some()) // filter out undefined variables
-      .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1)); // actually look up the expression by class id
-                                                                // Check that the expressions are smaller variables
-    SmallerVar::smaller_tuple(&pairs.collect(), &self.ty_splits)
+      .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1))
+      .collect(); // actually look up the expression by class id
+                  // Check that the expressions are smaller variables
+    SmallerVar::smaller_tuple(&pairs, &self.ty_splits)
+      && SmallerVar::check_premise(&self.premise, &pairs, egraph)
   }
 }
 
@@ -197,7 +242,7 @@ impl Analysis<SymbolLang> for ConstructorFolding {
 /// to the sexp. We'll also add assignments of the vars in the constructor to
 /// themselves.
 fn add_con_app_to_prev_instantiations<I>(
-  prev_instantiations: &mut Vec<HashMap<String, Sexp>>,
+  prev_instantiations: &mut Vec<SSubst>,
   var: &String,
   con_app_sexp: &Sexp,
   app_vars: I,
@@ -206,7 +251,7 @@ fn add_con_app_to_prev_instantiations<I>(
 {
   // These instantiations are equivalent but we need to track them so that
   // we can discover all possible new instantiations when we add a variable.
-  let equal_instantiations: Vec<HashMap<String, Sexp>> = prev_instantiations
+  let equal_instantiations: Vec<SSubst> = prev_instantiations
     .iter()
     .flat_map(|instantiation| {
       // If the var isn't in the instantiation, then we don't need to make a
@@ -233,7 +278,7 @@ fn add_con_app_to_prev_instantiations<I>(
 /// {x: (S Z)}
 /// This function will traverse the instantiation and make substitutions
 /// where appropriate.
-fn resolve_instantiation(instantiation: &HashMap<String, Sexp>) -> HashMap<String, Sexp> {
+fn resolve_instantiation(instantiation: &SSubst) -> SSubst {
   let mut resolved_instantiation = HashMap::new();
   for var in instantiation.keys() {
     resolve_var_instantiation(instantiation, &mut resolved_instantiation, var);
@@ -242,8 +287,8 @@ fn resolve_instantiation(instantiation: &HashMap<String, Sexp>) -> HashMap<Strin
 }
 
 fn resolve_var_instantiation(
-  instantiation: &HashMap<String, Sexp>,
-  resolved_instantiation: &mut HashMap<String, Sexp>,
+  instantiation: &SSubst,
+  resolved_instantiation: &mut SSubst,
   var: &String,
 ) {
   match instantiation.get(var) {
@@ -297,14 +342,14 @@ fn resolve_var_instantiation(
 /// variable.
 fn instantiate_new_ih_equalities(
   egraph: &mut Eg,
-  prev_instantiations: &mut Vec<HashMap<String, Sexp>>,
+  prev_instantiations: &mut Vec<SSubst>,
   var: &String,
   var_ancestors: &[String],
   lhs: &Sexp,
   rhs: &Sexp,
   // params: &[String],
 ) {
-  let new_instantiations: Vec<HashMap<String, Sexp>> = prev_instantiations
+  let new_instantiations: Vec<SSubst> = prev_instantiations
     .iter()
     .flat_map(|instantiation| {
       // TODO: do we need to take the powerset of the ancestors here? I don't
@@ -392,7 +437,7 @@ pub struct Goal<'a> {
   pub local_context: Context,
   /// Map from a variable to its split (right now we only track data constructor
   /// splits)
-  ty_splits: HashMap<String, Sexp>,
+  ty_splits: SSubst,
   /// The top-level parameters to the goal
   pub params: Vec<String>,
   /// Variables we can case-split
@@ -404,7 +449,7 @@ pub struct Goal<'a> {
   // TODO: It almost feels like we could use an e-graph to track these past
   // instantiations, but we can't use the main e-graph because there's other stuff
   // that gets put into it.
-  prev_var_instantiations: Vec<HashMap<String, Sexp>>,
+  prev_var_instantiations: Vec<SSubst>,
   /// The equation we are trying to prove
   pub eq: Equation,
   /// If this is a conditional prop, the premise
@@ -454,7 +499,7 @@ impl<'a> Goal<'a> {
         .map(|(param_symb, _param_type)| {
           (param_symb.to_string(), Sexp::String(param_symb.to_string()))
         })
-        .collect::<HashMap<String, Sexp>>()]
+        .collect::<SSubst>()]
       .into(),
       eq,
       premise,
@@ -635,6 +680,7 @@ impl<'a> Goal<'a> {
           scrutinees: self.scrutinees.iter().cloned().collect(),
           // TODO: Can we take a reference instead of cloning?
           ty_splits: self.ty_splits.clone(),
+          premise: self.premise.clone(),
         };
         let mut added_lemma = false;
         if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {

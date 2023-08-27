@@ -6,6 +6,8 @@ use symbolic_expressions::{Sexp, SexpError};
 
 use crate::config::CONFIG;
 
+pub type SSubst = HashMap<String, Sexp>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
   pub repr: Sexp,
@@ -168,11 +170,7 @@ fn starts_uppercase(string: &str) -> bool {
     .unwrap_or(false)
 }
 
-fn find_instantiations_helper(
-  proto: &Sexp,
-  actual: &Sexp,
-  instantiations_map: &mut HashMap<String, Sexp>,
-) {
+fn find_instantiations_helper(proto: &Sexp, actual: &Sexp, instantiations_map: &mut SSubst) {
   match (proto, actual) {
     (Sexp::Empty, _) | (_, Sexp::Empty) => unreachable!(),
     (Sexp::String(proto_str), actual_sexp) => {
@@ -216,7 +214,7 @@ fn find_instantiations_helper(
 ///     instantiations = {a: (List x), b: Nat}
 ///
 /// actual is assumed to be a valid instantiation of proto.
-pub fn find_instantiations(proto: &Type, actual: &Type) -> HashMap<String, Sexp> {
+pub fn find_instantiations(proto: &Type, actual: &Type) -> SSubst {
   let mut instantiations = HashMap::new();
   find_instantiations_helper(&proto.repr, &actual.repr, &mut instantiations);
   instantiations
@@ -228,7 +226,7 @@ pub fn find_instantiations(proto: &Type, actual: &Type) -> HashMap<String, Sexp>
 ///     instantiations: {a: (List b), b: Nat}
 ///
 ///     returns:        (List b)
-pub fn resolve_sexp(sexp: &Sexp, instantiations: &HashMap<String, Sexp>) -> Sexp {
+pub fn resolve_sexp(sexp: &Sexp, instantiations: &SSubst) -> Sexp {
   map_sexp(
     |v| {
       instantiations
@@ -246,12 +244,12 @@ pub fn resolve_sexp(sexp: &Sexp, instantiations: &HashMap<String, Sexp>) -> Sexp
 ///     instantiations: {a: (List b), b: Nat}
 ///
 ///     returns:        (List Nat)
-pub fn recursively_resolve_sexp(sexp: &Sexp, instantiations: &HashMap<String, Sexp>) -> Sexp {
+pub fn recursively_resolve_sexp(sexp: &Sexp, instantiations: &SSubst) -> Sexp {
   map_sexp(|v| recursively_resolve_variable(v, instantiations), sexp)
 }
 
 /// Requires that there are no cycles in instantiations.
-pub fn recursively_resolve_variable(var: &str, instantiations: &HashMap<String, Sexp>) -> Sexp {
+pub fn recursively_resolve_variable(var: &str, instantiations: &SSubst) -> Sexp {
   instantiations
     .get(var)
     .map(|sexp| map_sexp(|v| recursively_resolve_variable(v, instantiations), sexp))
