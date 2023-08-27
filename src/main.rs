@@ -32,14 +32,14 @@ fn main() -> std::io::Result<()> {
   let mut non_cyclic_num_valid = 0;
   for raw_goal in parser_state.raw_goals.iter() {
     let (reductions, defns) = parser_state.get_reductions_and_definitions(
-      &raw_goal.lhs_sexp,
-      &raw_goal.rhs_sexp,
+      &raw_goal.equation.lhs,
+      &raw_goal.equation.rhs,
       raw_goal.local_rules.clone(),
     );
     let mut goal = Goal::top(
       &raw_goal.name,
-      raw_goal.lhs_sexp.clone(),
-      raw_goal.rhs_sexp.clone(),
+      raw_goal.equation.lhs.clone(),
+      raw_goal.equation.rhs.clone(),
       raw_goal.params.clone(),
       &parser_state.env,
       &parser_state.context,
@@ -52,23 +52,18 @@ fn main() -> std::io::Result<()> {
       }
     }
     num_goals_attempted += 1;
-    let goal_name = goal.name.clone();
-    let goal_vars = goal.local_context.clone();
-    let goal_params = goal.params.clone();
-    let goal_lhs = goal.lhs_sexp.clone();
-    let goal_rhs = goal.rhs_sexp.clone();
     println!(
       "{} {}: {} = {}",
       "Proving begin".blue(),
-      goal_name.blue(),
-      goal_lhs,
-      goal_rhs
+      raw_goal.name.blue(),
+      goal.eq.lhs.sexp,
+      goal.eq.rhs.sexp
     );
     let start_cyclic = Instant::now();
     let (result, mut proof_state) = goal::prove(goal.copy(), true);
     let duration_cyclic = start_cyclic.elapsed();
-    let goal_name_without_cyclic = format!("{}_no_cyclic", goal_name);
-    goal.name = goal_name_without_cyclic.clone();
+    let goal_name_without_cyclic = format!("{}_no_cyclic", goal.name);
+    goal.name = goal_name_without_cyclic;
     let start_non_cyclic = Instant::now();
     let (result_without_cyclic, mut proof_state_without_cyclic) = goal::prove(goal.copy(), false);
     let duration_non_cyclic = start_non_cyclic.elapsed();
@@ -76,9 +71,9 @@ fn main() -> std::io::Result<()> {
       println!(
         "{} {}: {} = {}",
         "Proving end".blue(),
-        goal_name.blue(),
-        goal_lhs,
-        goal_rhs
+        raw_goal.name.blue(),
+        goal.eq.lhs.sexp,
+        goal.eq.rhs.sexp
       );
     }
     if result != result_without_cyclic {
@@ -92,7 +87,7 @@ fn main() -> std::io::Result<()> {
     }
     println!(
       "{} = {} (cyclic: {:.2} ms, non cyclic: {:.2} ms)",
-      goal_name.blue(),
+      raw_goal.name.blue(),
       result,
       duration_cyclic.as_millis(),
       duration_non_cyclic.as_millis()
@@ -106,15 +101,14 @@ fn main() -> std::io::Result<()> {
     if CONFIG.emit_proofs {
       if let goal::Outcome::Valid = result {
         if CONFIG.cyclic_proofs {
-          let filename = goal_name_to_filename(&goal_name);
+          let filename = goal_name_to_filename(&raw_goal.name);
           let explanation = explain_top(
             &filename,
-            &goal_name,
+            &raw_goal.name,
             &mut proof_state,
-            &goal_lhs,
-            &goal_rhs,
-            &goal_params,
-            &goal_vars,
+            &goal.eq,
+            &goal.params,
+            &goal.local_context,
             goal.defns,
             goal.env,
             goal.global_context,
@@ -124,15 +118,14 @@ fn main() -> std::io::Result<()> {
         }
       }
       if let goal::Outcome::Valid = result_without_cyclic {
-        let filename = goal_name_to_filename(&goal_name_without_cyclic);
+        let filename = goal_name_to_filename(&goal.name);
         let explanation = explain_top(
           &filename,
-          &goal_name_without_cyclic,
+          &goal.name,
           &mut proof_state_without_cyclic,
-          &goal_lhs,
-          &goal_rhs,
-          &goal_params,
-          &goal_vars,
+          &goal.eq,
+          &goal.params,
+          &goal.local_context,
           goal.defns,
           goal.env,
           goal.global_context,
@@ -144,7 +137,7 @@ fn main() -> std::io::Result<()> {
     if let Some(ref mut file) = result_file {
       let line = format!(
         "{},{:?},{:?},{},{}\n",
-        goal_name,
+        raw_goal.name,
         result,
         result_without_cyclic,
         // Convert to ms

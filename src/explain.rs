@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use symbolic_expressions::Sexp;
 
-use crate::ast::{map_sexp, Context, Defns, Env, Type};
+use crate::ast::{map_sexp, to_pattern, Context, Defns, Env, Type};
 use crate::config::CONFIG;
-use crate::goal::{ProofState, ProofTerm};
+use crate::goal::{Equation, ProofState, ProofTerm, IH_EQUALITY_PREFIX, LEMMA_PREFIX};
 
 /// Constants from (Liquid)Haskell
 const EQUALS: &str = "=";
@@ -43,8 +43,6 @@ const APPLY: &str = "$";
 const ARROW: &str = "->";
 const FORWARD_ARROW: &str = "=>";
 const BACKWARD_ARROW: &str = "<=";
-const IH_EQUALITY_PREFIX: &str = "ih-equality-";
-const LEMMA_PREFIX: &str = "lemma-";
 
 /// A rewrite can be forward or backward, this specifies which direction it
 /// goes.
@@ -53,6 +51,7 @@ enum RwDirection {
   Backward,
 }
 
+#[derive(Debug)]
 struct LemmaInfo {
   name: String,
   // (param_name, param_type)
@@ -84,8 +83,7 @@ pub fn explain_top(
   filename: &str,
   goal: &str,
   state: &mut ProofState,
-  lhs: &Sexp,
-  rhs: &Sexp,
+  eq: &Equation,
   params: &[String],
   top_level_vars: &HashMap<Symbol, Type>,
   defns: &Defns,
@@ -108,9 +106,9 @@ pub fn explain_top(
   str_explanation.push(' ');
   str_explanation.push_str(goal);
   str_explanation.push_str(": ");
-  str_explanation.push_str(&lhs.to_string());
+  str_explanation.push_str(&eq.lhs.sexp.to_string());
   str_explanation.push_str(" = ");
-  str_explanation.push_str(&rhs.to_string());
+  str_explanation.push_str(&eq.rhs.sexp.to_string());
   str_explanation.push('\n');
 
   // Haskell module declaration + imports
@@ -143,19 +141,48 @@ pub fn explain_top(
   // println!("{:?}", args);
 
   // Add the types and function definition stub
-  str_explanation.push_str(&add_proof_types_and_stub(goal, lhs, rhs, &args));
+  str_explanation.push_str(&add_proof_types_and_stub(
+    goal,
+    &eq.lhs.sexp,
+    &eq.rhs.sexp,
+    &args,
+  ));
   str_explanation.push('\n');
 
   // Finally, we can do the proof explanation
 
   // Maps the rewrite rule string corresponding to a lemma to
-  // (fresh_lemma_name, lemma_vars, lemma LHS, lemma RHS)
+  // (fresh_lemma_name, lemma_vars, lemma LHS, lemma RHS).
+  // In the beginning add only the top-level inductive hypothesis.
   let mut lemma_map = HashMap::new();
+  let pat_lhs: Pattern<SymbolLang> = to_pattern(&eq.lhs.expr, |v| top_level_vars.contains_key(v));
+  let pat_rhs: Pattern<SymbolLang> = to_pattern(&eq.rhs.expr, |v| top_level_vars.contains_key(v));
+  let lemma_info = LemmaInfo {
+    name: goal.to_string(),
+    params: params
+      .iter()
+      .map(|param| {
+        let param_type = top_level_vars
+          .get(&Symbol::from_str(param).unwrap())
+          .unwrap();
+        (param.clone(), param_type.to_string())
+      })
+      .collect(),
+    lhs: symbolic_expressions::parser::parse_str(&pat_lhs.to_string()).unwrap(),
+    rhs: symbolic_expressions::parser::parse_str(&pat_rhs.to_string()).unwrap(),
+  };
+  let ih_name = format!("lemma-{}={}", pat_lhs, pat_rhs);
+  lemma_map.insert(ih_name, lemma_info);
+
   let proof_exp = explain_proof(1, goal, state, goal, &mut lemma_map);
   str_explanation.push_str(&proof_exp);
   str_explanation.push('\n');
 
   for (_rule_name, lemma_info) in lemma_map.iter() {
+    if lemma_info.name == goal {
+      // This is the top-level IH, we don't need to add it.
+      continue;
+    }
     str_explanation.push_str(&add_proof_types_and_stub(
       &lemma_info.name,
       &lemma_info.lhs,
@@ -452,7 +479,7 @@ fn explain_goal(
         extract_rule_name(next_term).and_then(|(rule_name, rw_dir)| {
           if rule_name.starts_with(IH_EQUALITY_PREFIX) {
             let args = extract_ih_arguments(&rule_name);
-            Some(add_lemma_inovcation(top_goal_name, args.iter()))
+            Some(add_lemma_invocation(top_goal_name, args.iter()))
           } else if rule_name.starts_with(LEMMA_PREFIX) {
             // println!("extracting lemma from {} {} {}", rule_name, flat_term, next_term);
             Some(extract_lemma_invocation(
@@ -557,7 +584,7 @@ fn add_comment(str_explanation: &mut String, comment: Option<&String>, depth: us
   }
 }
 
-fn add_lemma_inovcation<'a, L>(lemma_name: &str, lemma_arguments: L) -> String
+fn add_lemma_invocation<'a, L>(lemma_name: &str, lemma_arguments: L) -> String
 where
   L: Iterator<Item = &'a String>,
 {
@@ -636,7 +663,7 @@ fn extract_lemma_invocation(
   };
 
   // Create the lemma invocation
-  add_lemma_inovcation(&lemma_name, lhsmap.values())
+  add_lemma_invocation(&lemma_name, lhsmap.values())
 }
 
 fn add_indentation(s: &mut String, depth: usize) {

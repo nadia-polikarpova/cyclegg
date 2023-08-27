@@ -25,10 +25,15 @@ fn make_rewrite_for_defn(name: &str, args: &Sexp, value: &Sexp) -> Rw {
   Rewrite::new(lhs, searcher, applier).unwrap()
 }
 
+pub struct RawEquation {
+  pub lhs: Sexp,
+  pub rhs: Sexp,
+}
+
 pub struct RawGoal {
   pub name: String,
-  pub lhs_sexp: Sexp,
-  pub rhs_sexp: Sexp,
+  pub equation: RawEquation,
+  pub premise: Option<RawEquation>,
   pub params: Vec<(Symbol, Type)>,
   pub local_rules: Vec<Rw>,
 }
@@ -43,8 +48,11 @@ impl RawGoal {
   ) -> Self {
     Self {
       name,
-      lhs_sexp,
-      rhs_sexp,
+      equation: RawEquation {
+        lhs: lhs_sexp,
+        rhs: rhs_sexp,
+      },
+      premise: None,
       params,
       local_rules,
     }

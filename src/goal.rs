@@ -1,7 +1,7 @@
 use colored::Colorize;
 use egg::*;
 use log::warn;
-use std::collections::{HashMap, VecDeque, hash_map::Entry};
+use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use symbolic_expressions::{parser, Sexp};
 
@@ -15,6 +15,8 @@ pub type Rw = Rewrite<SymbolLang, ConstructorFolding>;
 
 /// A special scrutinee name used to signal that case split bound has been exceeded
 const BOUND_EXCEEDED: &str = "__";
+pub const LEMMA_PREFIX: &str = "lemma-";
+pub const IH_EQUALITY_PREFIX: &str = "ih-equality-"; // TODO: remove
 
 /// Condition that checks whether the substitution is into a smaller tuple of variable
 #[derive(Clone)]
@@ -355,6 +357,20 @@ fn instantiate_new_ih_equalities(
   prev_instantiations.extend(new_instantiations);
 }
 
+/// Left- or right-hand side of an equation
+#[derive(Debug, Clone)]
+pub struct Side {
+  pub sexp: Sexp,
+  id: Id,
+  pub expr: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct Equation {
+  pub lhs: Side,
+  pub rhs: Side,
+}
+
 /// Proof goal
 pub struct Goal<'a> {
   /// Goal name
@@ -383,13 +399,8 @@ pub struct Goal<'a> {
   // instantiations, but we can't use the main e-graph because there's other stuff
   // that gets put into it.
   prev_var_instantiations: Vec<HashMap<String, Sexp>>,
-  /// Our goal is to prove lhs == rhs
-  lhs: Expr,
-  pub lhs_sexp: Sexp,
-  lhs_id: Id,
-  rhs: Expr,
-  pub rhs_sexp: Sexp,
-  rhs_id: Id,
+  /// The equation we are trying to prove
+  pub eq: Equation,
   /// Environment
   pub env: &'a Env,
   /// Global context (i.e. constructors and top-level bindings)
@@ -411,13 +422,8 @@ impl<'a> Goal<'a> {
     defns: &'a Defns,
   ) -> Self {
     let mut egraph: Eg = EGraph::default().with_explanations_enabled();
-    let lhs = lhs_sexp.to_string().parse().unwrap();
-    let rhs = rhs_sexp.to_string().parse().unwrap();
-    egraph.add_expr(&lhs);
-    egraph.add_expr(&rhs);
-    egraph.rebuild();
-    let lhs_id = egraph.lookup_expr(&lhs).unwrap();
-    let rhs_id = egraph.lookup_expr(&rhs).unwrap();
+    let lhs = Goal::add_side(lhs_sexp, &mut egraph);
+    let rhs = Goal::add_side(rhs_sexp, &mut egraph);
 
     let mut res = Self {
       name: name.to_string(),
@@ -440,12 +446,7 @@ impl<'a> Goal<'a> {
         })
         .collect::<HashMap<String, Sexp>>()]
       .into(),
-      lhs,
-      lhs_sexp,
-      lhs_id,
-      rhs,
-      rhs_sexp,
-      rhs_id,
+      eq: Equation { lhs, rhs },
       env,
       global_context,
       defns,
@@ -455,6 +456,13 @@ impl<'a> Goal<'a> {
       res.local_context.insert(name, ty);
     }
     res
+  }
+
+  fn add_side(sexp: Sexp, egraph: &mut Eg) -> Side {
+    let expr = sexp.to_string().parse().unwrap();
+    egraph.add_expr(&expr);
+    let id = egraph.lookup_expr(&expr).unwrap();
+    Side { sexp, id, expr }
   }
 
   pub fn copy(&self) -> Self {
@@ -471,27 +479,12 @@ impl<'a> Goal<'a> {
       guard_exprs: self.guard_exprs.clone(),
       scrutinees: self.scrutinees.clone(),
       prev_var_instantiations: self.prev_var_instantiations.clone(),
-      lhs: self.lhs.clone(),
-      lhs_sexp: self.lhs_sexp.clone(),
-      lhs_id: self.lhs_id,
-      rhs: self.rhs.clone(),
-      rhs_sexp: self.rhs_sexp.clone(),
-      rhs_id: self.rhs_id,
+      eq: self.eq.clone(),
       env: self.env,
       global_context: self.global_context,
       // NOTE: We don't really need to clone this.
       defns: self.defns,
     }
-  }
-
-  pub fn get_lhs(&self) -> Expr {
-    let extractor = Extractor::new(&self.egraph, AstSize);
-    extractor.find_best(self.lhs_id).1
-  }
-
-  pub fn get_rhs(&self) -> Expr {
-    let extractor = Extractor::new(&self.egraph, AstSize);
-    extractor.find_best(self.rhs_id).1
   }
 
   /// Saturate the goal by applying all available rewrites
@@ -524,9 +517,13 @@ impl<'a> Goal<'a> {
   /// Check if the goal has been discharged,
   /// and if so, create an explanation.
   pub fn check_validity(&mut self) {
-    if self.egraph.find(self.lhs_id) == self.egraph.find(self.rhs_id) {
+    if self.egraph.find(self.eq.lhs.id) == self.egraph.find(self.eq.rhs.id) {
       // We have shown that LHS == RHS
-      self.explanation = Some(self.egraph.explain_equivalence(&self.lhs, &self.rhs));
+      self.explanation = Some(
+        self
+          .egraph
+          .explain_equivalence(&self.eq.lhs.expr, &self.eq.rhs.expr),
+      );
     } else {
       // Check if this case in unreachable (i.e. if there are any inconsistent e-classes in the e-graph)
       let res = self.egraph.classes().find_map(|eclass| {
@@ -570,8 +567,8 @@ impl<'a> Goal<'a> {
     state: &ProofState,
     is_cyclic: bool,
   ) -> HashMap<String, (Pat, Pat, SmallerVar)> {
-    let lhs_id = self.egraph.find(self.lhs_id);
-    let rhs_id = self.egraph.find(self.rhs_id);
+    let lhs_id = self.egraph.find(self.eq.lhs.id);
+    let rhs_id = self.egraph.find(self.eq.rhs.id);
     let is_var = |v| self.local_context.contains_key(v);
 
     let exprs = if is_cyclic {
@@ -579,9 +576,12 @@ impl<'a> Goal<'a> {
       get_all_expressions(&self.egraph, vec![lhs_id, rhs_id])
     } else {
       // Otherwise, only use the original LHS and RHS
-      vec![(lhs_id, vec![self.lhs.clone()]), (rhs_id, vec![self.rhs.clone()])]
-        .into_iter()
-        .collect()
+      vec![
+        (lhs_id, vec![self.eq.lhs.expr.clone()]),
+        (rhs_id, vec![self.eq.rhs.expr.clone()]),
+      ]
+      .into_iter()
+      .collect()
     };
 
     let mut rewrites = self.lemmas.clone();
@@ -594,6 +594,7 @@ impl<'a> Goal<'a> {
         if state.timeout() {
           return rewrites;
         }
+
         let rhs: Pattern<SymbolLang> = to_pattern(rhs_expr, is_var);
         if (CONFIG.irreducible_only && self.is_reducible(rhs_expr)) || has_guard_wildcards(&rhs) {
           continue;
@@ -637,7 +638,7 @@ impl<'a> Goal<'a> {
     cond: SmallerVar,
     rewrites: &mut HashMap<String, (Pat, Pat, SmallerVar)>,
   ) {
-    let name = format!("lemma-{}={}", lhs, rhs);
+    let name = format!("{}{}={}", LEMMA_PREFIX, lhs, rhs);
     // Insert the lemma into the rewrites map if it's not already there
     match rewrites.entry(name) {
       Entry::Occupied(_) => (),
@@ -787,8 +788,8 @@ impl<'a> Goal<'a> {
             &mut new_goal.prev_var_instantiations,
             &fresh_var_name,
             &ancestors,
-            &new_goal.lhs_sexp,
-            &new_goal.rhs_sexp,
+            &new_goal.eq.lhs.sexp,
+            &new_goal.eq.rhs.sexp,
           );
         }
         // NOTE If we are adding a new variable with the same type as its parent,
@@ -1012,7 +1013,7 @@ pub fn explain_goal_failure(goal: &Goal) {
   println!("{} {}", "Could not prove".red(), goal.name);
   println!("{}", "LHS Nodes".cyan());
   let extractor = egg::Extractor::new(&goal.egraph, AstSize);
-  for lhs_node in goal.egraph[goal.lhs_id].nodes.iter() {
+  for lhs_node in goal.egraph[goal.eq.lhs.id].nodes.iter() {
     let child_rec_exprs: String = lhs_node
       .children
       .iter()
@@ -1029,7 +1030,7 @@ pub fn explain_goal_failure(goal: &Goal) {
     }
   }
   println!("{}", "RHS Nodes".cyan());
-  for rhs_node in goal.egraph[goal.rhs_id].nodes.iter() {
+  for rhs_node in goal.egraph[goal.eq.rhs.id].nodes.iter() {
     let child_rec_exprs: String = rhs_node
       .children
       .iter()
