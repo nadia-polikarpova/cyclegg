@@ -14,9 +14,6 @@
 (:: id (-> (?a) ?a))
 (let id (?x) ?x)
 
-(:: inc (-> (Nat) Nat))
-(let inc ?x (S ?x))
-
 (:: add (-> (Nat Nat) Nat))
 (let add (Z      ?y) ?y             )
 (let add ((S ?x) ?y) (S (add ?x ?y)))
@@ -62,14 +59,6 @@
 (let append (Nil           ?ys) ?ys                       )
 (let append ((Cons ?x ?xs) ?ys) (Cons ?x (append ?xs ?ys)))
 
-(:: last (-> ((List a)) a))
-(let last ((Cons ?x Nil)          ) ?x                  )
-(let last ((Cons ?x (Cons ?y ?ys))) (last (Cons ?y ?ys)))
-
-(:: lastOfTwo (-> ((List a) (List a)) a))
-(let lastOfTwo (?xs Nil          ) (last ?xs)          )
-(let lastOfTwo (?xs (Cons ?y ?ys)) (last (Cons ?y ?ys)))
-
 (data Test (A B))
 (:: A Test)
 (:: B (-> (Nat) Test))
@@ -82,57 +71,112 @@
 (let natId Z Z)
 (let natId (S ?x) (S (natId ?x)))
 
-(:: min2 (-> (Nat Nat) Nat))
-(let min2 (?m ?n) (ite (leq ?m ?n) ?m ?n))
-
-(:: zero (-> (Bool (List Bool)) Nat))
-(let zero (?b Nil)           Z            )
-(let zero (?b (Cons ?y ?ys)) (zero ?y ?ys))
-
-(:: revAcc (-> ((List ?a) (List ?a)) (List ?a)))
-(let revAcc (Nil           ?acc) ?acc                       )
-(let revAcc ((Cons ?x ?xs) ?acc) (revAcc ?xs (Cons ?x ?acc)))
-
-(:: mapInc (-> ((List Nat)) (List Nat)))
-(let mapInc (Nil) Nil)
-(let mapInc ((Cons ?x ?xs)) (Cons (S ?x) (mapInc ?xs)))
-
-(:: revInc (-> ((List Nat) (List Nat)) (List Nat)))
-(let revInc (Nil           ?acc) ?acc                           )
-(let revInc ((Cons ?x ?xs) ?acc) (revInc ?xs (Cons (S ?x) ?acc)))
-
-
-(=== propRevInc (xs) ((List Nat))
-  (map inc (revAcc xs Nil))
-  (revInc xs)
+(=== weird (x) (Test)
+  (testId x)
+  x
 )
 
-(=== prop_61 (xs ys) ((List a) (List a))
-  (last (append xs ys))
-  (lastOfTwo xs ys)
+(=== prop_natId (x) (Nat)
+  (natId x)
+  x
 )
 
-(=== prop_nat (xs ys) ((List Nat) (List Nat))
-  (last (append xs ys))
-  (lastOfTwo xs ys)
+(=== funny (x) (Nat)
+  (ite (lt Z x) (eq x x) False)
+  False
 )
 
-(=== prop_32 (a b) (Nat Nat)
-  (min2 a b)
-  (min2 b a)
+(=== funny (x) (Nat)
+  (ite (lt Z x) (eq x x) False)
+  False
 )
 
-(=== prop_eq (x) (Nat)
-  (ite (eq x x) True False)
+(=== good1 (n m) (Nat Nat)
+  True
+  (lt n (add n (S m)))  
+)
+
+(=== bad1 (n m) (Nat Nat)
+  (add n n)
+  (add m m)  
+)
+
+(=== good2 (x y) (Nat Nat)
+  (ite (leq x y) x x)
+  x
+)
+
+(=== good3 (xs) ((List Nat))
+  (sub (head xs) (head xs))
+  Z
+)
+
+(=== good4 (xs) ((List a))
+  (map id xs)
+  xs
+)
+
+(=== addComm (n m) (Nat Nat)
+  (add n m)
+  (add m n)
+)
+
+(=== good5 (n) (Nat)
+  (add (sub n n) n)
+  n
+)
+
+(=== n_sn (n) (Nat)
+  (add n (S n))
+  (S (add n n))
+)
+
+(=== n_sn_provable (m n) (Nat)
+  (add m (S n))
+  (S (add m n))
+)
+
+(=== prop_69 (n m) (Nat Nat)
+  (leq n (add m n))
   True
 )
 
-(=== prop_mark (xs ys) ((List Bool) (List Bool))
-  (zero True xs)
-  (zero False ys)
+(// (let add (?x (S ?y)) (S (add ?x ?y))))
+(// (let leq ((add ?m ?n)) (leq (add ?m (S ?n)))))
+(// (let leq ((add ?m (S ?n))) (leq (add ?m ?n))))
+(=== prop_69_lem (n m) (Nat Nat)
+  (leq n (add m n))
+  (leq n (add m (S n)))
 )
 
-()
+(=== right_s (n m) (Nat Nat)
+  (add m (S n))
+  (S (add m n))
+)
 
+(=== right_s_add (n m) (Nat Nat)
+  (add n (add m (S n)))
+  (add n (S (add m n)))
+)
+
+(=== right_s_add_k (k n m) (Nat Nat Nat)
+  (add k (add m (S n)))
+  (add k (S (add m n)))
+)
+
+(=== right_s_leq (n m) (Nat Nat)
+  (leq n (add m (S n)))
+  (leq n (S (add m n)))
+)
+
+(=== right_s_leq_k (k n m) (Nat Nat Nat)
+  (leq k (add m (S n)))
+  (leq k (S (add m n)))
+)
+
+(=== prop_28 (x xs) (Nat (List Nat))
+  (elem x (append xs (Cons x Nil)))
+  True
+)
 
 )
