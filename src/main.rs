@@ -32,7 +32,7 @@ fn main() -> std::io::Result<()> {
   let mut non_cyclic_num_valid = 0;
   for raw_goal in parser_state.raw_goals.iter() {
     let (reductions, defns) =
-      parser_state.get_reductions_and_definitions(&raw_goal, raw_goal.local_rules.clone());
+      parser_state.get_reductions_and_definitions(raw_goal, raw_goal.local_rules.clone());
     let mut goal = Goal::top(
       &raw_goal.name,
       &raw_goal.equation,

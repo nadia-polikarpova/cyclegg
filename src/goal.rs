@@ -25,7 +25,7 @@ pub const IH_EQUALITY_PREFIX: &str = "ih-equality-"; // TODO: remove
 pub struct SmallerVar {
   pub scrutinees: Vec<Symbol>,
   pub ty_splits: SSubst,
-  pub premise: Option<Equation>,
+  pub premises: Vec<Equation>,
 }
 
 impl SmallerVar {
@@ -42,7 +42,7 @@ impl SmallerVar {
   /// For now implements a sound but incomplete measure,
   /// where all components of the range need to be no larger, and at least one has to be strictly smaller.
   /// TODO: Implement a fancy automata-theoretic check here.
-  fn smaller_tuple(subst: &Vec<(&Symbol, Expr)>, ty_splits: &SSubst) -> bool {
+  fn smaller_tuple(&self, subst: &Vec<(&Symbol, Expr)>) -> bool {
     let mut has_strictly_smaller = false;
     let info = SmallerVar::pretty_subst(subst.as_slice());
     for (var, expr) in subst {
@@ -64,7 +64,7 @@ impl SmallerVar {
         if contains_function(&sexp) {
           return false;
         }
-        let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, ty_splits));
+        let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, &self.ty_splits));
         let structural_comparison_result = structural_comparision(&sexp, var_sexp);
         // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
         if let StructuralComparison::LT = structural_comparison_result {
@@ -100,44 +100,43 @@ impl SmallerVar {
 
   /// Apply subst to self.premise (if any)
   /// and check whether the resulting terms are equal in the egraph
-  fn check_premise(
-    premise: &Option<Equation>,
-    subst: &Vec<(&Symbol, Expr)>,
-    egraph: &mut Eg,
-  ) -> bool {
-    match premise {
-      None => true,
-      Some(premise) => {
-        // let info = SmallerVar::pretty_subst(subst.as_slice());
-        // println!("checking premise {} = {} for {}", premise.lhs.sexp, premise.rhs.sexp, info);
-        let subst: SSubst = subst
-          .iter()
-          .map(|(var, expr)| {
-            (
-              var.to_string(),
-              symbolic_expressions::parser::parse_str(&expr.to_string()).unwrap(),
-            )
-          })
-          .collect();
+  fn check_premise(premise: &Equation, subst: &[(&Symbol, Expr)], egraph: &mut Eg) -> bool {
+    // let info = SmallerVar::pretty_subst(subst.as_slice());
+    // println!("checking premise {} = {} for {}", premise.lhs.sexp, premise.rhs.sexp, info);
+    let subst: SSubst = subst
+      .iter()
+      .map(|(var, expr)| {
+        (
+          var.to_string(),
+          symbolic_expressions::parser::parse_str(&expr.to_string()).unwrap(),
+        )
+      })
+      .collect();
 
-        let lhs = resolve_sexp(&premise.lhs.sexp, &subst);
-        let rhs = resolve_sexp(&premise.rhs.sexp, &subst);
-        // println!("{} == {}", lhs, rhs);
-        // convert to RecExprs:
-        let lhs: Expr = lhs.to_string().parse().unwrap();
-        let rhs: Expr = rhs.to_string().parse().unwrap();
-        // lookup the terms in the e-graph
-        // Is they are not there, we just say the condition is false
-        // TODO: add these terms to the e-graph as part of grounding.
-        if let Some(lhs_id) = egraph.lookup_expr(&lhs) {
-          if let Some(rhs_id) = egraph.lookup_expr(&rhs) {
-            // println!("{} == {}", lhs_id, rhs_id);
-            return lhs_id == rhs_id;
-          }
-        }
-        false
+    let lhs = resolve_sexp(&premise.lhs.sexp, &subst);
+    let rhs = resolve_sexp(&premise.rhs.sexp, &subst);
+    // println!("{} == {}", lhs, rhs);
+    // convert to RecExprs:
+    let lhs: Expr = lhs.to_string().parse().unwrap();
+    let rhs: Expr = rhs.to_string().parse().unwrap();
+    // lookup the terms in the e-graph
+    // Is they are not there, we just say the condition is false
+    // TODO: add these terms to the e-graph as part of grounding.
+    if let Some(lhs_id) = egraph.lookup_expr(&lhs) {
+      if let Some(rhs_id) = egraph.lookup_expr(&rhs) {
+        // println!("{} == {}", lhs_id, rhs_id);
+        return lhs_id == rhs_id;
       }
     }
+    false
+  }
+
+  /// Check all of the premises of this condition
+  fn check_premises(&self, subst: &Vec<(&Symbol, Expr)>, egraph: &mut Eg) -> bool {
+    self
+      .premises
+      .iter()
+      .all(|premise| SmallerVar::check_premise(premise, subst, egraph))
   }
 }
 
@@ -155,8 +154,8 @@ impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
       .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1))
       .collect(); // actually look up the expression by class id
                   // Check that the expressions are smaller variables
-    let terminates = SmallerVar::smaller_tuple(&pairs, &self.ty_splits);
-    let premise_holds = SmallerVar::check_premise(&self.premise, &pairs, egraph);
+    let terminates = self.smaller_tuple(&pairs);
+    let premise_holds = self.check_premises(&pairs, egraph);
     // println!("trying IH with subst {}; checks: {} {}", SmallerVar::pretty_subst(&pairs), terminates, premise_holds);
     terminates && premise_holds
   }
@@ -390,7 +389,7 @@ fn instantiate_new_ih_terms(
     let resolved_instantiation = resolve_instantiation(new_instantiation);
     for term in terms.iter() {
       let new_term = recursively_resolve_sexp(&term.sexp, &resolved_instantiation);
-      ETerm::new(new_term, egraph);
+      ETerm::new(&new_term, egraph);
     }
   }
   prev_instantiations.extend(new_instantiations);
@@ -409,14 +408,24 @@ pub struct ETerm {
 }
 
 impl ETerm {
-  /// Create a new term from a symbolic expression
-  /// and add it to the egraph
-  fn new(sexp: Sexp, egraph: &mut Eg) -> Self {
+  /// Add a side of an equation to the egraph
+  fn new(sexp: &Sexp, egraph: &mut Eg) -> ETerm {
     let expr = sexp.to_string().parse().unwrap();
     egraph.add_expr(&expr);
     let id = egraph.lookup_expr(&expr).unwrap();
-    Self { sexp, id, expr }
+    ETerm {
+      sexp: sexp.clone(), id, expr
+    }
   }
+
+  fn from_expr(expr: Expr, egraph: &Eg) -> Self {
+    let id = egraph.lookup_expr(&expr).unwrap();
+    let sexp = parser::parse_str(&expr.to_string()).unwrap();
+    ETerm {
+      sexp, id, expr
+    }
+  }
+
 }
 
 impl Display for ETerm {
@@ -443,14 +452,16 @@ impl Equation {
   /// producing an equation;
   /// if assume is true, also union the the two sides
   fn new(eq: &RawEquation, egraph: &mut Eg, assume: bool) -> Self {
-    let lhs = ETerm::new(eq.lhs.clone(), egraph);
-    let rhs = ETerm::new(eq.rhs.clone(), egraph);
+    let lhs = ETerm::new(&eq.lhs, egraph);
+    let rhs = ETerm::new(&eq.rhs, egraph);
     if assume {
       // Assume the premise
       egraph.union_trusted(lhs.id, rhs.id, format!("premise {}={}", lhs.sexp, rhs.sexp));
       egraph.rebuild();
     }
-    Self { lhs, rhs }
+    Equation {
+      lhs, rhs
+    }
   }
 }
 
@@ -477,15 +488,15 @@ pub struct Goal<'a> {
   scrutinees: VecDeque<Symbol>,
   /// Stores the expression each guard variable maps to. Since we only need
   /// these for proof emission, we just store the expression as a String.
-  guard_exprs: HashMap<String, String>,
+  guard_exprs: HashMap<String, Expr>,
   // TODO: It almost feels like we could use an e-graph to track these past
   // instantiations, but we can't use the main e-graph because there's other stuff
   // that gets put into it.
   prev_var_instantiations: Vec<SSubst>,
   /// The equation we are trying to prove
   pub eq: Equation,
-  /// If this is a conditional prop, the premise
-  pub premise: Option<Equation>,
+  /// If this is a conditional prop, the premises
+  pub premises: Vec<Equation>,
   /// Environment
   pub env: &'a Env,
   /// Global context (i.e. constructors and top-level bindings)
@@ -534,7 +545,8 @@ impl<'a> Goal<'a> {
         .collect::<SSubst>()]
       .into(),
       eq,
-      premise,
+      // Convert to a singleton list if the Option is Some, else the empty list
+      premises: premise.into_iter().collect(),
       env,
       global_context,
       defns,
@@ -561,7 +573,7 @@ impl<'a> Goal<'a> {
       scrutinees: self.scrutinees.clone(),
       prev_var_instantiations: self.prev_var_instantiations.clone(),
       eq: self.eq.clone(),
-      premise: self.premise.clone(),
+      premises: self.premises.clone(),
       env: self.env,
       global_context: self.global_context,
       // NOTE: We don't really need to clone this.
@@ -685,7 +697,7 @@ impl<'a> Goal<'a> {
           scrutinees: self.scrutinees.iter().cloned().collect(),
           // TODO: Can we take a reference instead of cloning?
           ty_splits: self.ty_splits.clone(),
-          premise: self.premise.clone(),
+          premises: self.premises.clone(),
         };
         let mut added_lemma = false;
         if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
@@ -709,6 +721,10 @@ impl<'a> Goal<'a> {
         if !added_lemma {
           warn!("cannot create a lemma from {} and {}", lhs, rhs);
         }
+        // else {
+        //   println!("Lemma has premises:");
+        //   self.premises.iter().for_each(|p| println!("{}", p));
+        // }
       }
     }
     rewrites
@@ -789,9 +805,7 @@ impl<'a> Goal<'a> {
       let new_node = SymbolLang::leaf(fresh_var);
       let new_pattern_ast = vec![ENodeOrVar::ENode(new_node.clone())].into();
       let guard_var_pattern_ast = vec![ENodeOrVar::Var(guard_var)].into();
-      self
-        .guard_exprs
-        .insert(fresh_var.to_string(), expr.to_string());
+      self.guard_exprs.insert(fresh_var.to_string(), expr);
       self.egraph.union_instantiations(
         &guard_var_pattern_ast,
         &new_pattern_ast,
@@ -865,7 +879,7 @@ impl<'a> Goal<'a> {
 
           // Take both sides of the equality and the premise (if there is one)
           let mut sides = vec![&new_goal.eq.lhs, &new_goal.eq.rhs];
-          if let Some(premise) = &new_goal.premise {
+          for premise in new_goal.premises.iter() {
             sides.push(&premise.lhs);
             sides.push(&premise.rhs);
           }
@@ -932,7 +946,7 @@ impl<'a> Goal<'a> {
       // Not sure if it's proper to use new_goal.name here
       new_goal.egraph.union_instantiations(
         &var_pattern_ast,
-        &rec_expr_to_pattern_ast(con_app),
+        &rec_expr_to_pattern_ast(con_app.clone()),
         &Subst::default(),
         new_goal.name.clone(),
       );
@@ -944,6 +958,41 @@ impl<'a> Goal<'a> {
       // FIXME: is this OK? add a full_context?
       // new_goal.local_context.remove(&var);
       new_goal.egraph.rebuild();
+
+      new_goal.premises = self
+        .premises
+        .iter()
+        .map(|premise| {
+          let var_instantiation = HashMap::from([(var_str.clone(), con_app_sexp.clone())]);
+          let new_lhs_sexp = resolve_sexp(&premise.lhs.sexp, &var_instantiation);
+          let new_rhs_sexp = resolve_sexp(&premise.rhs.sexp, &var_instantiation);
+          let new_lhs = ETerm::new(&new_lhs_sexp, &mut new_goal.egraph);
+          let new_rhs = ETerm::new(&new_rhs_sexp, &mut new_goal.egraph);
+          let old_ids = (
+            new_goal.egraph.find(premise.lhs.id),
+            new_goal.egraph.find(premise.rhs.id),
+          );
+          // This is simply instantiating a variable to something it has been
+          // unioned with, so these ids should be unchanged.
+          //
+          // This can be solved in the future by canonicalization.
+          assert_eq!(old_ids, (new_lhs.id, new_rhs.id));
+          Equation {
+            lhs: new_lhs,
+            rhs: new_rhs
+          }
+        })
+        .collect();
+
+      // TODO: should this be only done when mk_lemmas is false?
+      if var_str.starts_with(GUARD_PREFIX) {
+        let lhs = ETerm::from_expr(self.guard_exprs[&var_str].clone(), &new_goal.egraph);
+        let rhs = ETerm::from_expr(con_app, &new_goal.egraph);
+        let eq = Equation {
+          lhs, rhs
+        };
+        new_goal.premises.push(eq);
+      }
 
       // Add the subgoal to the proof state
       state.goals.push(new_goal);
@@ -961,7 +1010,7 @@ impl<'a> Goal<'a> {
         self.name,
         ProofTerm::ITESplit(
           var_str.clone(),
-          self.guard_exprs[&var_str].clone(),
+          self.guard_exprs[&var_str].to_string(),
           instantiated_cons_and_goals,
         ),
       );
@@ -1007,8 +1056,13 @@ impl<'a> Goal<'a> {
 
 impl<'a> Display for Goal<'a> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    if let Some(premise) = &self.premise {
-      write!(f, "{}  ==>  ", premise)?;
+    if !self.premises.is_empty() {
+      let premises_string = self.premises
+                                .iter()
+                                .map(|premise| format!("{}", premise))
+                                .collect::<Vec<String>>()
+        .join(", ");
+      write!(f, "{} ==> ", premises_string)?;
     }
     write!(f, "{}", self.eq)
   }
