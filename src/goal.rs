@@ -430,18 +430,10 @@ impl<'a> Goal<'a> {
     defns: &'a Defns,
   ) -> Self {
     let mut egraph: Eg = EGraph::default().with_explanations_enabled();
-    let eq = Goal::add_equation(eq, &mut egraph);
-
-    if let Some(raw_premise) = &premise {
-      // If there is a premise, add its sides and assume it
-      let premise = Goal::add_equation(raw_premise, &mut egraph);
-      egraph.union_trusted(
-        premise.lhs.id,
-        premise.rhs.id,
-        format!("premise {}={}", premise.lhs.sexp, premise.rhs.sexp),
-      );
-      egraph.rebuild();
-    }
+    let eq = Goal::add_equation(eq, &mut egraph, false);
+    let premise = premise
+      .as_ref()
+      .map(|eq| Goal::add_equation(eq, &mut egraph, true));
 
     let mut res = Self {
       name: name.to_string(),
@@ -478,10 +470,17 @@ impl<'a> Goal<'a> {
   }
 
   /// Add both sides of a raw equation to the egraph,
-  /// producing an equation
-  fn add_equation(eq: &RawEquation, egraph: &mut Eg) -> Equation {
+  /// producing an equation;
+  /// if assume is true, also union the the two sides
+  fn add_equation(eq: &RawEquation, egraph: &mut Eg, assume: bool) -> Equation {
     let lhs = Goal::add_side(&eq.lhs, egraph);
     let rhs = Goal::add_side(&eq.rhs, egraph);
+    if assume {
+      // Assume the premise
+      egraph.union_trusted(lhs.id, rhs.id, format!("premise {}={}", lhs.sexp, rhs.sexp));
+      egraph.rebuild();
+    }
+
     Equation { lhs, rhs }
   }
 
