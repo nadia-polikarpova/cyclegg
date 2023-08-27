@@ -91,6 +91,13 @@
   False
 )
 
+(==> goodCond (n m) (Nat Nat)
+  (S n)
+  (S m)
+  n
+  m
+)
+
 (=== good1 (n m) (Nat Nat)
   True
   (lt n (add n (S m)))  

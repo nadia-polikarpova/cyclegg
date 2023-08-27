@@ -38,27 +38,6 @@ pub struct RawGoal {
   pub local_rules: Vec<Rw>,
 }
 
-impl RawGoal {
-  pub fn new(
-    name: String,
-    lhs_sexp: Sexp,
-    rhs_sexp: Sexp,
-    params: Vec<(Symbol, Type)>,
-    local_rules: Vec<Rw>,
-  ) -> Self {
-    Self {
-      name,
-      equation: RawEquation {
-        lhs: lhs_sexp,
-        rhs: rhs_sexp,
-      },
-      premise: None,
-      params,
-      local_rules,
-    }
-  }
-}
-
 #[derive(Default)]
 pub struct ParserState {
   pub env: Env,
@@ -171,7 +150,7 @@ impl ParserState {
     }
   }
 
-  /// This is done after parsing because that way the other we parse does not
+  /// This is done after parsing because that way the order we parse does not
   /// affect whether a goal has all definitions in scope.
   pub fn get_reductions_and_definitions(
     &self,
@@ -311,8 +290,11 @@ pub fn parse_file(filename: &str) -> Result<ParserState, SexpError> {
             .insert(mangled_name, vec![(mangled_args, mangled_value)]);
         }
       }
-      "===" => {
-        // This is a goal: parse name, parameter names, parameter types, lhs, and rhs:
+      "===" | "==>" => {
+        // This is a goal: parse name, parameter names, parameter types;
+        // if the goal is conditional, parse the lhs and rhs of the premise;
+        // then parse the lhs and rhs of the goal;
+        // finally, if there's more elements, parse a list of lemmas.
         //
         // Goal names are allowed to have underscores so we won't validate them. The
         // worst this can do is have a goal wrongly match a variable name, which should
@@ -329,17 +311,31 @@ pub fn parse_file(filename: &str) -> Result<ParserState, SexpError> {
           .collect::<Result<Vec<Symbol>, SexpError>>()?;
         let param_type_list = decl.list()?[3].list()?;
         let mangled_param_types = param_type_list.iter().map(|x| Type::new(mangle_sexp(x)));
-        let mangled_params = mangled_param_names
+        let params = mangled_param_names
           .into_iter()
           .zip(mangled_param_types)
           .collect();
 
-        let mut lhs_index = 4;
-        let mut temp_rules = vec![];
-        // Are there any lemmas?
-        if decl.list()?.len() == 7 {
+        let mut index = 4;
+        let premise = if decl_kind == "==>" {
+          let lhs: Sexp = mangle_sexp(&decl.list()?[index]);
+          let rhs: Sexp = mangle_sexp(&decl.list()?[index + 1]);
+          index += 2;
+          Some(RawEquation { lhs, rhs })
+        } else {
+          None
+        };
+
+        let lhs: Sexp = mangle_sexp(&decl.list()?[index]);
+        let rhs: Sexp = mangle_sexp(&decl.list()?[index + 1]);
+        index += 2;
+        let equation = RawEquation { lhs, rhs };
+
+        let mut local_rules = vec![];
+        // If there's more to parse, these must be lemmas.
+        if decl.list()?.len() > index {
           // Lemmas we are using to aid this proof
-          for rule_sexp in decl.list()?[4].list()? {
+          for rule_sexp in decl.list()?[index].list()? {
             let lhs = mangle_sexp(&rule_sexp.list()?[1]);
             let rhs = mangle_sexp(&rule_sexp.list()?[2]);
             let searcher: Pattern<SymbolLang> = lhs.to_string().parse().unwrap();
@@ -353,7 +349,7 @@ pub fn parse_file(filename: &str) -> Result<ParserState, SexpError> {
                   applier.clone(),
                 )
                 .unwrap();
-                temp_rules.push(rw);
+                local_rules.push(rw);
                 // println!("adding rewrite rule: {} => {}", lhs, rhs);
               }
               "<=>" => {
@@ -363,34 +359,27 @@ pub fn parse_file(filename: &str) -> Result<ParserState, SexpError> {
                   applier.clone(),
                 )
                 .unwrap();
-                temp_rules.push(rw);
+                local_rules.push(rw);
                 let rw = Rewrite::new(
                   format!("hyp-lemma-{}", rhs),
                   applier.clone(),
                   searcher.clone(),
                 )
                 .unwrap();
-                temp_rules.push(rw);
+                local_rules.push(rw);
               }
               _ => panic!("unknown rewrite rules: {}", rule_sexp),
             }
           }
-          // Start the LHS 1 element later.
-          lhs_index += 1;
-        } else {
-          // There aren't lemmas, so there must only be 6 elements.
-          assert_eq!(decl.list()?.len(), 6);
         }
 
-        let mangled_lhs_sexp: Sexp = mangle_sexp(&decl.list()?[lhs_index]);
-        let mangled_rhs_sexp: Sexp = mangle_sexp(&decl.list()?[lhs_index + 1]);
-        let raw_goal = RawGoal::new(
+        let raw_goal = RawGoal {
           name,
-          mangled_lhs_sexp,
-          mangled_rhs_sexp,
-          mangled_params,
-          temp_rules,
-        );
+          premise,
+          equation,
+          params,
+          local_rules,
+        };
         state.raw_goals.push(raw_goal);
       }
       "//" => {

@@ -63,9 +63,9 @@
 )
 
 (=== prop_66_lemma (p xs) ((-> a Bool) (List a))
-  ((=> (leq ?m ?n) (leq ?m (S ?n))))
   (leq (len (filter p xs)) (len xs))
   True
+  ((=> (leq ?m ?n) (leq ?m (S ?n))))
 )
 
 (=== lemma_prop_66 (p xs) ((-> a Bool) (List a))

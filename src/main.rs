@@ -38,8 +38,8 @@ fn main() -> std::io::Result<()> {
     );
     let mut goal = Goal::top(
       &raw_goal.name,
-      raw_goal.equation.lhs.clone(),
-      raw_goal.equation.rhs.clone(),
+      &raw_goal.equation,
+      &raw_goal.premise,
       raw_goal.params.clone(),
       &parser_state.env,
       &parser_state.context,

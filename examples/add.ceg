@@ -26,9 +26,9 @@
 )
 
 (=== add_accum_lemma (a b c) (Nat Nat Nat)
-  ((=> (addAccum ?a ?b (S ?c)) (S (addAccum ?a ?b ?c))))
   (addAccum a b c)
   (add (add a b) c)
+  ((=> (addAccum ?a ?b (S ?c)) (S (addAccum ?a ?b ?c))))
 )
 
 (// CycleQ can prove)

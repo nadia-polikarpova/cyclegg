@@ -421,9 +421,9 @@
 
 (//
   (=== prop_47 (t) ((Tree a))
-    ((=> (max ?a ?b) (max ?b ?a)))
     (height (mirror t))
     (height t)
+    ((=> (max ?a ?b) (max ?b ?a)))
   )
 )
 

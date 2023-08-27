@@ -8,6 +8,7 @@ use symbolic_expressions::{parser, Sexp};
 use crate::ast::*;
 use crate::config::*;
 use crate::egraph::*;
+use crate::parser::RawEquation;
 
 // We will use SymbolLang with no analysis for now
 pub type Eg = EGraph<SymbolLang, ConstructorFolding>;
@@ -357,18 +358,23 @@ fn instantiate_new_ih_equalities(
   prev_instantiations.extend(new_instantiations);
 }
 
-/// Left- or right-hand side of an equation
+/// A term inside the egraph;
+/// we store multiple representations because they are useful for different purposes.
 #[derive(Debug, Clone)]
-pub struct Side {
+pub struct ETerm {
+  /// Term as a symbolic expression
   pub sexp: Sexp,
+  /// E-class id of the term in the egraph
   id: Id,
+  /// Terms as egg's RecExpr
   pub expr: Expr,
 }
 
+/// An equation is a pair of terms
 #[derive(Debug, Clone)]
 pub struct Equation {
-  pub lhs: Side,
-  pub rhs: Side,
+  pub lhs: ETerm,
+  pub rhs: ETerm,
 }
 
 /// Proof goal
@@ -401,6 +407,8 @@ pub struct Goal<'a> {
   prev_var_instantiations: Vec<HashMap<String, Sexp>>,
   /// The equation we are trying to prove
   pub eq: Equation,
+  /// If this is a conditional prop, the premise
+  pub premise: Option<Equation>,
   /// Environment
   pub env: &'a Env,
   /// Global context (i.e. constructors and top-level bindings)
@@ -413,8 +421,8 @@ impl<'a> Goal<'a> {
   /// Create top-level goal
   pub fn top(
     name: &str,
-    lhs_sexp: Sexp,
-    rhs_sexp: Sexp,
+    eq: &RawEquation,
+    premise: &Option<RawEquation>,
     params: Vec<(Symbol, Type)>,
     env: &'a Env,
     global_context: &'a Context,
@@ -422,8 +430,18 @@ impl<'a> Goal<'a> {
     defns: &'a Defns,
   ) -> Self {
     let mut egraph: Eg = EGraph::default().with_explanations_enabled();
-    let lhs = Goal::add_side(lhs_sexp, &mut egraph);
-    let rhs = Goal::add_side(rhs_sexp, &mut egraph);
+    let eq = Goal::add_equation(eq, &mut egraph);
+
+    if let Some(raw_premise) = &premise {
+      // If there is a premise, add its sides and assume it
+      let premise = Goal::add_equation(raw_premise, &mut egraph);
+      egraph.union_trusted(
+        premise.lhs.id,
+        premise.rhs.id,
+        format!("premise {}={}", premise.lhs.sexp, premise.rhs.sexp),
+      );
+      egraph.rebuild();
+    }
 
     let mut res = Self {
       name: name.to_string(),
@@ -446,7 +464,8 @@ impl<'a> Goal<'a> {
         })
         .collect::<HashMap<String, Sexp>>()]
       .into(),
-      eq: Equation { lhs, rhs },
+      eq,
+      premise,
       env,
       global_context,
       defns,
@@ -458,11 +477,24 @@ impl<'a> Goal<'a> {
     res
   }
 
-  fn add_side(sexp: Sexp, egraph: &mut Eg) -> Side {
+  /// Add both sides of a raw equation to the egraph,
+  /// producing an equation
+  fn add_equation(eq: &RawEquation, egraph: &mut Eg) -> Equation {
+    let lhs = Goal::add_side(&eq.lhs, egraph);
+    let rhs = Goal::add_side(&eq.rhs, egraph);
+    Equation { lhs, rhs }
+  }
+
+  /// Add a side of an equation to the egraph
+  fn add_side(sexp: &Sexp, egraph: &mut Eg) -> ETerm {
     let expr = sexp.to_string().parse().unwrap();
     egraph.add_expr(&expr);
     let id = egraph.lookup_expr(&expr).unwrap();
-    Side { sexp, id, expr }
+    ETerm {
+      sexp: sexp.clone(),
+      id,
+      expr,
+    }
   }
 
   pub fn copy(&self) -> Self {
@@ -480,6 +512,7 @@ impl<'a> Goal<'a> {
       scrutinees: self.scrutinees.clone(),
       prev_var_instantiations: self.prev_var_instantiations.clone(),
       eq: self.eq.clone(),
+      premise: self.premise.clone(),
       env: self.env,
       global_context: self.global_context,
       // NOTE: We don't really need to clone this.
@@ -1050,7 +1083,6 @@ pub fn explain_goal_failure(goal: &Goal) {
 
 /// Top-level interface to the theorem prover.
 pub fn prove(mut goal: Goal, is_cyclic: bool) -> (Outcome, ProofState) {
-  // let initial_goal_name = goal.name.clone();
   let mut state = ProofState {
     goals: vec![goal],
     solved_goal_explanation_and_context: HashMap::default(),

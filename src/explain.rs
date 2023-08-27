@@ -154,6 +154,7 @@ pub fn explain_top(
   // Maps the rewrite rule string corresponding to a lemma to
   // (fresh_lemma_name, lemma_vars, lemma LHS, lemma RHS).
   // In the beginning add only the top-level inductive hypothesis.
+  // TODO: still need to handle the inverted IH? (RHS => LHS)
   let mut lemma_map = HashMap::new();
   let pat_lhs: Pattern<SymbolLang> = to_pattern(&eq.lhs.expr, |v| top_level_vars.contains_key(v));
   let pat_rhs: Pattern<SymbolLang> = to_pattern(&eq.rhs.expr, |v| top_level_vars.contains_key(v));
