@@ -2,6 +2,7 @@ use colored::Colorize;
 use egg::*;
 use log::warn;
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
+use std::fmt::Display;
 use std::time::{Duration, Instant};
 use symbolic_expressions::{parser, Sexp};
 
@@ -415,11 +416,50 @@ pub struct ETerm {
   pub expr: Expr,
 }
 
+impl ETerm {
+  /// Create a new term from a symbolic expression
+  /// and add it to the egraph
+  fn new(sexp: Sexp, egraph: &mut Eg) -> Self {
+    let expr = sexp.to_string().parse().unwrap();
+    egraph.add_expr(&expr);
+    let id = egraph.lookup_expr(&expr).unwrap();
+    Self { sexp, id, expr }
+  }
+}
+
+impl Display for ETerm {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.sexp)
+  }
+}
+
 /// An equation is a pair of terms
 #[derive(Debug, Clone)]
 pub struct Equation {
   pub lhs: ETerm,
   pub rhs: ETerm,
+}
+
+impl Display for Equation {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{} === {}", self.lhs.sexp, self.rhs.sexp)
+  }
+}
+
+impl Equation {
+  /// Add both sides of a raw equation to the egraph,
+  /// producing an equation;
+  /// if assume is true, also union the the two sides
+  fn new(eq: &RawEquation, egraph: &mut Eg, assume: bool) -> Self {
+    let lhs = ETerm::new(eq.lhs.clone(), egraph);
+    let rhs = ETerm::new(eq.rhs.clone(), egraph);
+    if assume {
+      // Assume the premise
+      egraph.union_trusted(lhs.id, rhs.id, format!("premise {}={}", lhs.sexp, rhs.sexp));
+      egraph.rebuild();
+    }
+    Self { lhs, rhs }
+  }
 }
 
 /// Proof goal
@@ -475,10 +515,10 @@ impl<'a> Goal<'a> {
     defns: &'a Defns,
   ) -> Self {
     let mut egraph: Eg = EGraph::default().with_explanations_enabled();
-    let eq = Goal::add_equation(eq, &mut egraph, false);
+    let eq = Equation::new(eq, &mut egraph, false);
     let premise = premise
       .as_ref()
-      .map(|eq| Goal::add_equation(eq, &mut egraph, true));
+      .map(|eq| Equation::new(eq, &mut egraph, true));
 
     let mut res = Self {
       name: name.to_string(),
@@ -512,33 +552,6 @@ impl<'a> Goal<'a> {
       res.local_context.insert(name, ty);
     }
     res
-  }
-
-  /// Add both sides of a raw equation to the egraph,
-  /// producing an equation;
-  /// if assume is true, also union the the two sides
-  fn add_equation(eq: &RawEquation, egraph: &mut Eg, assume: bool) -> Equation {
-    let lhs = Goal::add_side(&eq.lhs, egraph);
-    let rhs = Goal::add_side(&eq.rhs, egraph);
-    if assume {
-      // Assume the premise
-      egraph.union_trusted(lhs.id, rhs.id, format!("premise {}={}", lhs.sexp, rhs.sexp));
-      egraph.rebuild();
-    }
-
-    Equation { lhs, rhs }
-  }
-
-  /// Add a side of an equation to the egraph
-  fn add_side(sexp: &Sexp, egraph: &mut Eg) -> ETerm {
-    let expr = sexp.to_string().parse().unwrap();
-    egraph.add_expr(&expr);
-    let id = egraph.lookup_expr(&expr).unwrap();
-    ETerm {
-      sexp: sexp.clone(),
-      id,
-      expr,
-    }
   }
 
   pub fn copy(&self) -> Self {
@@ -994,6 +1007,15 @@ impl<'a> Goal<'a> {
       .collect();
     // println!("new types: {:?}", ret);
     ret
+  }
+}
+
+impl<'a> Display for Goal<'a> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    if let Some(premise) = &self.premise {
+      write!(f, "{}  ==>  ", premise)?;
+    }
+    write!(f, "{}", self.eq)
   }
 }
 

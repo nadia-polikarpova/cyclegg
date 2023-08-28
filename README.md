@@ -10,13 +10,25 @@ cargo run -- examples/add.ceg
 ### TODO
 
 - Add flag for grounding
+- Add flag for each proof mode (cyclic, non-cyclic, both)
+- Create goals inside parser, do not expose RawGoal
 - SmallerVars: get rid of ty_splits and use the egraph instead? Introduce an extractor for the most normal form.
 - Blocking variables analysis
+- Decouple proof generation from proof search (e.g. put Defs, Proof term somewhere else)
 - Conditional props:
     - Add condition instantiations to the egraph during grounding
-    - Proof generation: how to include the proof of the condition holding?
+    - Proof generation:
+        - fix order of arguments in IH calls 
+        - include the premise into the LH precondition
+        - how to include the proof of the condition holding?
 - Make partial applications without $ work
 - Can all goals share the same e-graph?
+
+To debug:
+
+- prop_05: does it work in Dafny?
+- prop_48
+
 
 # Comparison to CycleQ
 

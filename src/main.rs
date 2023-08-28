@@ -50,11 +50,10 @@ fn main() -> std::io::Result<()> {
     }
     num_goals_attempted += 1;
     println!(
-      "{} {}: {} = {}",
+      "{} {}: {}",
       "Proving begin".blue(),
       raw_goal.name.blue(),
-      goal.eq.lhs.sexp,
-      goal.eq.rhs.sexp
+      goal
     );
     let start_cyclic = Instant::now();
     let (result, mut proof_state) = goal::prove(goal.copy(), true);
@@ -66,11 +65,10 @@ fn main() -> std::io::Result<()> {
     let duration_non_cyclic = start_non_cyclic.elapsed();
     if CONFIG.verbose {
       println!(
-        "{} {}: {} = {}",
+        "{} {}: {}",
         "Proving end".blue(),
         raw_goal.name.blue(),
-        goal.eq.lhs.sexp,
-        goal.eq.rhs.sexp
+        goal
       );
     }
     if result != result_without_cyclic {

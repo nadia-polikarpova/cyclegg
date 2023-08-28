@@ -122,7 +122,9 @@ pub fn var_depth(var_name: &str) -> usize {
 }
 
 pub fn is_descendant(var_name: &str, ancestor_name: &str) -> bool {
-  var_name.starts_with(ancestor_name) && var_name.len() > ancestor_name.len()
+  var_name.starts_with(ancestor_name)
+    && var_name.len() > ancestor_name.len()
+    && var_name.chars().nth(ancestor_name.len()).unwrap() == '_'
 }
 
 #[derive(PartialEq, PartialOrd, Ord, Eq, Debug)]

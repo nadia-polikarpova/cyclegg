@@ -38,6 +38,7 @@
 (:: ite (-> (Bool a a) a))
 (let ite (True ?x ?y ) ?x)
 (let ite (False ?x ?y) ?y)
+(let ite (?b    ?x ?x) ?x)
 
 (:: not (-> (Bool) Bool))
 (let not (True) False)
@@ -82,6 +83,10 @@
 (let max (Z      ?y    ) ?y             )
 (let max (?x     Z     ) ?x             )
 (let max ((S ?x) (S ?y)) (S (max ?x ?y)))
+
+(:: null (-> ((List a)) Bool))
+(let null (Nil          ) True)
+(let null ((Cons ?x ?xs)) False)
 
 (:: len (-> ((List a)) Nat))
 (let len (Nil          ) Z            )
@@ -229,6 +234,13 @@
   (count n (Cons n xs))
 )
 
+(==> prop_05 (n x xs) (Nat Nat (List Nat))
+  n
+  x
+  (S (count n xs))
+  (count n (Cons x xs))
+)
+
 (=== prop_06 (n m) (Nat Nat)
   (sub n (add n m))
   Z
@@ -279,6 +291,13 @@
   (S (len xs))
 )
 
+(==> prop_16 (x xs) (Nat (List Nat))
+  xs
+  Nil
+  (last (Cons x xs))
+  x
+)
+
 (=== prop_17 (n) (Nat)
   (leq n Z)
   (eq n Z)
@@ -322,6 +341,20 @@
 (=== prop_25 (a b) (Nat Nat)
   (eq (max a b) b)
   (leq a b)
+)
+
+(==> prop_26 (x xs ys) (Nat (List Nat) (List Nat))
+  (elem x xs)
+  True
+  (elem x (append xs ys))
+  True
+)
+
+(==> prop_27 (xs ys x) ((List Nat) (List Nat) Nat)
+  (elem x ys)
+  True
+  (elem x (append xs ys))
+  True
 )
 
 (=== prop_28 (x xs) (Nat (List Nat))
@@ -427,6 +460,13 @@
   )
 )
 
+(==> prop_48 (xs) ((List a))
+  (not (null xs))
+  True
+  (append (butlast xs) (Cons (last xs) Nil))
+  xs
+)
+
 (=== prop_49 (xs ys) ((List a) (List a))
   (butlast (append xs ys))
   (butlastConcat xs ys)
@@ -477,9 +517,37 @@
   (zip (drop n xs) (drop n ys))
 )
 
+(==> prop_59 (xs ys) ((List a) (List a))
+  ys
+  Nil
+  (last (append xs ys))
+  (last xs)
+)
+
+(==> prop_60 (xs ys) ((List a) (List a))
+  (not (null ys))
+  True
+  (last (append xs ys))
+  (last ys)
+)
+
 (=== prop_61 (xs ys) ((List a) (List a))
   (last (append xs ys))
   (lastOfTwo xs ys)
+)
+
+(==> prop_62 (xs x) ((List a) a)
+  (not (null xs))
+  True
+  (last (Cons x xs))
+  (last xs)
+)
+
+(==> prop_63 (n xs) (Nat (List a))
+  (lt n (len xs))
+  True
+  (last (drop n xs))
+  (last xs)
 )
 
 (=== prop_64 (x xs) (a (List a))
@@ -512,6 +580,20 @@
   True
 )
 
+(==> prop_70 (m n) (Nat Nat)
+  (leq m n)
+  True
+  (leq m (S n))
+  True
+)
+
+(==> prop_71 (x y xs) (Nat Nat (List Nat))
+  (eq x y)
+  False
+  (elem x (ins y xs))
+  (elem x xs)
+)
+
 (=== prop_72 (i xs) (Nat (List a))
   (rev (drop i xs))
   (take (sub (len xs) i) (rev xs))
@@ -530,6 +612,21 @@
 (=== prop_75 (n m xs) (Nat Nat (List Nat))
   (add (count n xs) (count n (Cons m Nil)))
   (count n (Cons m xs))
+)
+
+(==> prop_76 (n m xs) (Nat Nat (List Nat))
+  (eq n m)
+  False
+  (count n (append xs (Cons m Nil)))
+  (count n xs)
+)
+
+(// Needs (not (leq x y)) ==> (leq y x)?)
+(==> prop_77 (xs x) ((List Nat) Nat)
+  (sorted xs)
+  True
+  (sorted (insort x xs))
+  True
 )
 
 (=== prop_78 (xs) ((List Nat))
@@ -567,27 +664,41 @@
   (append (zip (take (len ys) xs) ys) (zip (drop (len ys) xs) zs))
 )
 
-(=== prop_86 (e) ((Expr a))
+(==> prop_85 (xs ys) ((List a) (List a))
+  (len xs)
+  (len ys)
+  (zip (rev xs) (rev ys))
+  (rev (zip xs ys))
+)
+
+(==> prop_86 (x y xs) (Nat Nat (List Nat))
+  (lt x y)
+  True
+  (elem x (ins y xs))
+  (elem x xs)
+)
+
+(=== prop_87 (e) ((Expr a))
   (mapE id e)
   e
 )
 
-(=== prop_87 (f g e) ((-> b c) (-> a b) (Expr a))
+(=== prop_88 (f g e) ((-> b c) (-> a b) (Expr a))
   (mapE ($ ($ comp f) g) e)
   (mapE f (mapE g e))
 )
 
-(=== prop_88 (f e) ((-> a b) (Expr a))
+(=== prop_89 (f e) ((-> a b) (Expr a))
   (argsE (mapE f e))
   (map ($ mapE f) (argsE e))
 )
 
-(=== prop_89 (f e) ((-> a b) (Tm a))
+(=== prop_90 (f e) ((-> a b) (Tm a))
   (argsT (mapT f e))
   (map ($ mapE f) (argsT e))
 )
 
-(=== prop_90 (f e) ((-> a b) (Expr a))
+(=== prop_91 (f e) ((-> a b) (Expr a))
   (headE (mapE f e))
   (mapE f (headE e))
 )
