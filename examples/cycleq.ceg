@@ -461,6 +461,7 @@
   )
 )
 
+(// This is an example that requires explicitly grounding the premise)
 (==> prop_48 (xs) ((List a))
   (not (null xs))
   True

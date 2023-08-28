@@ -343,13 +343,12 @@ fn resolve_var_instantiation(
 /// When we find a new variable that is a descendent of some others, we will
 /// discover new instantiations of the LHS and RHS that we can unify using this
 /// variable.
-fn instantiate_new_ih_equalities(
+fn instantiate_new_ih_terms(
   egraph: &mut Eg,
   prev_instantiations: &mut Vec<SSubst>,
   var: &String,
   var_ancestors: &[String],
-  lhs: &Sexp,
-  rhs: &Sexp,
+  terms: &[&ETerm],
   // params: &[String],
 ) {
   let new_instantiations: Vec<SSubst> = prev_instantiations
@@ -389,19 +388,10 @@ fn instantiate_new_ih_equalities(
     .collect();
   for new_instantiation in new_instantiations.iter() {
     let resolved_instantiation = resolve_instantiation(new_instantiation);
-    // println!("var: {}, ancestors: {:?}", var, var_ancestors);
-    // println!("resolved instantiation: {:?}", resolved_instantiation);
-    // .to_string().parse().unwrap() converts from sexp to RecExpr<ENodeOrVar<SymbolLang>>
-    let new_lhs = recursively_resolve_sexp(lhs, &resolved_instantiation)
-      .to_string()
-      .parse()
-      .unwrap();
-    let new_rhs = recursively_resolve_sexp(rhs, &resolved_instantiation)
-      .to_string()
-      .parse()
-      .unwrap();
-    egraph.add_expr(&new_lhs);
-    egraph.add_expr(&new_rhs);
+    for term in terms.iter() {
+      let new_term = recursively_resolve_sexp(&term.sexp, &resolved_instantiation);
+      ETerm::new(new_term, egraph);
+    }
   }
   prev_instantiations.extend(new_instantiations);
 }
@@ -872,17 +862,20 @@ impl<'a> Goal<'a> {
               }
             })
             .collect();
-          // TODO: Can this be made more efficient by only once computing the
-          // new possible instantiations for each constructor arg? Perhaps also
-          // even for each case split? And then we would just take those
-          // instantiations and use them for each fresh variable.
-          instantiate_new_ih_equalities(
+
+          // Take both sides of the equality and the premise (if there is one)
+          let mut sides = vec![&new_goal.eq.lhs, &new_goal.eq.rhs];
+          if let Some(premise) = &new_goal.premise {
+            sides.push(&premise.lhs);
+            sides.push(&premise.rhs);
+          }
+          // Instantiate all sides with the new substitution
+          instantiate_new_ih_terms(
             &mut new_goal.egraph,
             &mut new_goal.prev_var_instantiations,
             &fresh_var_name,
             &ancestors,
-            &new_goal.eq.lhs.sexp,
-            &new_goal.eq.rhs.sexp,
+            sides.as_slice(),
           );
         }
         // NOTE If we are adding a new variable with the same type as its parent,
