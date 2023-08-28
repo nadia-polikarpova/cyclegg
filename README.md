@@ -18,7 +18,6 @@ cargo run -- examples/add.ceg
 - Conditional props:
     - Add condition instantiations to the egraph during grounding
     - Proof generation:
-        - fix order of arguments in IH calls 
         - include the premise into the LH precondition
         - how to include the proof of the condition holding?
 - Make partial applications without $ work

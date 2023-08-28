@@ -637,34 +637,43 @@ fn extract_lemma_invocation(
   // take the union of both maps
   lhsmap.extend(rhsmap);
 
-  let lemma_name = if let Some(lemma_info) = lemma_map.get(rule_str) {
-    // Can't borrow lemma_name in the else case...
-    lemma_info.name.clone()
-  } else {
-    let lemma_name = format!("{}_lemma_{}", top_goal_name, lemma_map.len());
-    let lemma_info = LemmaInfo {
-      name: lemma_name.clone(),
-      params: lhsmap
-        .keys()
-        .map(|param| {
-          // println!("{:?} - {}", local_context, param);
-          let param_type = local_context
-            .get(&Symbol::from_str(param).unwrap())
-            .unwrap();
-          (param.clone(), param_type.to_string())
-        })
-        .collect(),
-      // Convert to an Sexp so we can fix up its variables and any other stuff
-      // we need to convert
-      lhs: symbolic_expressions::parser::parse_str(lemma[0]).unwrap(),
-      rhs: symbolic_expressions::parser::parse_str(lemma[1]).unwrap(),
-    };
-    lemma_map.insert(rule_str.to_string(), lemma_info);
-    lemma_name
-  };
-
-  // Create the lemma invocation
-  add_lemma_invocation(&lemma_name, lhsmap.values())
+  match lemma_map.get(rule_str) {
+    Some(lemma_info) => {
+      // Map lhsmap over the lemma's params.
+      // We need to do this because the lemma could be the top level IH,
+      // whose parameters are not in the same order as they are stored in lhsmap.
+      add_lemma_invocation(
+        &lemma_info.name,
+        lemma_info
+          .params
+          .iter()
+          .map(|(param, _)| lhsmap.get(param).unwrap()),
+      )
+    }
+    None => {
+      let lemma_name = format!("{}_lemma_{}", top_goal_name, lemma_map.len());
+      let lemma_info = LemmaInfo {
+        name: lemma_name.clone(),
+        params: lhsmap
+          .keys()
+          .map(|param| {
+            // println!("{:?} - {}", local_context, param);
+            let param_type = local_context
+              .get(&Symbol::from_str(param).unwrap())
+              .unwrap();
+            (param.clone(), param_type.to_string())
+          })
+          .collect(),
+        // Convert to an Sexp so we can fix up its variables and any other stuff
+        // we need to convert
+        lhs: symbolic_expressions::parser::parse_str(lemma[0]).unwrap(),
+        rhs: symbolic_expressions::parser::parse_str(lemma[1]).unwrap(),
+      };
+      lemma_map.insert(rule_str.to_string(), lemma_info);
+      // Create the lemma invocation
+      add_lemma_invocation(&lemma_name, lhsmap.values())
+    }
+  }
 }
 
 fn add_indentation(s: &mut String, depth: usize) {
