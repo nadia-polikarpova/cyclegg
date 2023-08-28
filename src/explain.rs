@@ -592,8 +592,9 @@ where
   let mut lemma_str = String::new();
   lemma_str.push_str(lemma_name);
   for arg in lemma_arguments {
-    lemma_str.push(' ');
+    lemma_str.push_str(" (");
     lemma_str.push_str(arg);
+    lemma_str.push(')');
   }
   lemma_str
 }
