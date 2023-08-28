@@ -25,7 +25,6 @@ cargo run -- examples/add.ceg
 
 To debug:
 
-- prop_05: does it work in Dafny?
 - prop_48
 
 

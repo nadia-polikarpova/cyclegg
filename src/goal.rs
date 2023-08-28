@@ -155,8 +155,10 @@ impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
       .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1))
       .collect(); // actually look up the expression by class id
                   // Check that the expressions are smaller variables
-    SmallerVar::smaller_tuple(&pairs, &self.ty_splits)
-      && SmallerVar::check_premise(&self.premise, &pairs, egraph)
+    let terminates = SmallerVar::smaller_tuple(&pairs, &self.ty_splits);
+    let premise_holds = SmallerVar::check_premise(&self.premise, &pairs, egraph);
+    // println!("trying IH with subst {}; checks: {} {}", SmallerVar::pretty_subst(&pairs), terminates, premise_holds);
+    terminates && premise_holds
   }
 }
 

@@ -234,7 +234,8 @@
   (count n (Cons n xs))
 )
 
-(==> prop_05 (n x xs) (Nat Nat (List Nat))
+(// This is an example where a termination check needs semantic knowledge!)
+(==> prop_05 (xs n x) ((List Nat) Nat Nat)
   n
   x
   (S (count n xs))
