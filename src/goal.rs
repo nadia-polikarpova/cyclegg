@@ -132,7 +132,7 @@ impl SmallerVar {
   }
 
   /// Check all of the premises of this condition
-  fn check_premises(&self, subst: &Vec<(&Symbol, Expr)>, egraph: &mut Eg) -> bool {
+  fn check_premises(&self, subst: &[(&Symbol, Expr)], egraph: &mut Eg) -> bool {
     self
       .premises
       .iter()
@@ -408,24 +408,24 @@ pub struct ETerm {
 }
 
 impl ETerm {
-  /// Add a side of an equation to the egraph
+  /// Create a new term from a symbolic expression
+  /// and add it to the egraph
   fn new(sexp: &Sexp, egraph: &mut Eg) -> ETerm {
     let expr = sexp.to_string().parse().unwrap();
     egraph.add_expr(&expr);
     let id = egraph.lookup_expr(&expr).unwrap();
-    ETerm {
-      sexp: sexp.clone(), id, expr
+    Self {
+      sexp: sexp.clone(),
+      id,
+      expr,
     }
   }
 
   fn from_expr(expr: Expr, egraph: &Eg) -> Self {
     let id = egraph.lookup_expr(&expr).unwrap();
     let sexp = parser::parse_str(&expr.to_string()).unwrap();
-    ETerm {
-      sexp, id, expr
-    }
+    Self { sexp, id, expr }
   }
-
 }
 
 impl Display for ETerm {
@@ -459,9 +459,7 @@ impl Equation {
       egraph.union_trusted(lhs.id, rhs.id, format!("premise {}={}", lhs.sexp, rhs.sexp));
       egraph.rebuild();
     }
-    Equation {
-      lhs, rhs
-    }
+    Self { lhs, rhs }
   }
 }
 
@@ -979,7 +977,7 @@ impl<'a> Goal<'a> {
           assert_eq!(old_ids, (new_lhs.id, new_rhs.id));
           Equation {
             lhs: new_lhs,
-            rhs: new_rhs
+            rhs: new_rhs,
           }
         })
         .collect();
@@ -988,9 +986,7 @@ impl<'a> Goal<'a> {
       if var_str.starts_with(GUARD_PREFIX) {
         let lhs = ETerm::from_expr(self.guard_exprs[&var_str].clone(), &new_goal.egraph);
         let rhs = ETerm::from_expr(con_app, &new_goal.egraph);
-        let eq = Equation {
-          lhs, rhs
-        };
+        let eq = Equation { lhs, rhs };
         new_goal.premises.push(eq);
       }
 
@@ -1057,10 +1053,11 @@ impl<'a> Goal<'a> {
 impl<'a> Display for Goal<'a> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     if !self.premises.is_empty() {
-      let premises_string = self.premises
-                                .iter()
-                                .map(|premise| format!("{}", premise))
-                                .collect::<Vec<String>>()
+      let premises_string = self
+        .premises
+        .iter()
+        .map(|premise| format!("{}", premise))
+        .collect::<Vec<String>>()
         .join(", ");
       write!(f, "{} ==> ", premises_string)?;
     }
