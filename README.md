@@ -9,21 +9,45 @@ cargo run -- examples/add.ceg
 
 ### TODO
 
+#### Organizational
 - Add flag for grounding
 - Add flag for each proof mode (cyclic, non-cyclic, both)
 - Create goals inside parser, do not expose RawGoal
+- Decouple proof generation from proof search (e.g. put Defs, Proof term somewhere else)
+- Make partial applications without $ work
+- Move from SymbolLang to a proper language.
+    - See babble for inspiration (https://github.com/dcao/babble/blob/main/src/ast_node.rs)
+- Emit a proof data structure
+    - Right now we just emit strings that are (mostly) valid LiquidHaskell.
+    - Creating a proper equational proof data structure would allow us to emit to other backends.
+    - It would also be cleaner.
+
+#### Search
 - Canonical forms for termination checking:
     - Extend constructor analysis to keep track of variables, add a canonical form extractor
     - In SmallerVars check: compare canonical forms of the old and new parameter and require that the old one has the new one wrapped in a constructor
     - For grounding: at every split, replace the var being split with the smaller var in all prev_instantiations
         (store prev_instantiations in terms of eclasses so that we can get their canonical forms)
 - Blocking variables analysis
-- Decouple proof generation from proof search (e.g. put Defs, Proof term somewhere else)
-- Conditional props:
-    - Proof generation:
-        - include the premise into the LH precondition
-        - how to include the proof of the condition holding?
-- Make partial applications without $ work
+
+#### Proofs
+- Conditional props proof generation
+    - Add explanation for conditional unions (cannot just `union_trusted`).
+    - Include the premise into the LH precondition
+        - This can be accomplished by taking a witness of the precondition as an argument.
+    - How to include the proof of the condition holding?
+        - To use a conditional lemma you need a witness of the condition. We can take the e-graph from
+          which we are getting the explanation and ask it to explain why the e-classes of the condition
+          are equal and use those to build a proof. In LH this would look something like
+          
+          ```haskell
+          let conditionWitness =   condLHS 
+                               ==. condLHS'
+                               ? lemma lemmaArgs
+                               ==. condRHS
+                               *** QED
+           in conditionalLemma conditionWitness args
+          ```
 
 # Comparison to CycleQ
 
