@@ -1,9 +1,15 @@
 # CVC4 comparison
 
-Note that the property numbers do not necessarily match those in
+## Notes
+
+The property numbers do not necessarily match those in
 [../examples/cycleq.ceg](../examples/cycleq.ceg), which is why in
 [cvc4-results.csv](./cvc4-results.csv) there is a `prop` section that indicates
-the property.
+the property. The properties
+[../examples/isaplanner.ceg](../examples/isaplanner.ceg) should match exactly.
+
+The properties in [cvc4-results.csv](./cvc4-results.csv) have been reordered to
+numeric order instead of the default lexicographic order.
 
 ## Install
 
@@ -22,6 +28,14 @@ This is the command used to generate the benchmarks in `cvc4-results.csv`.
 ```bash
 python3 run-benchmarks.py PATH-TO-CVC4 ind/benchmarks-dt/isaplanner -t 30000 -o cvc4-results.csv
 ```
+
+## Custom benchmarks
+
+Custom benchmarks are found in [custom](./custom). These include some new props
+as well as some modified props from CVC4's benchmarks (for example, some of the
+IsaPlanner benchmarks were written using CVC4's native equality instead of a
+custom `eq` function, so we wrote new benchmarks that enforced usage of a custom
+`eq` function).
 
 ## Running the helper script
 

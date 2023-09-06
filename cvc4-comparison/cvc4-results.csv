@@ -1,5 +1,13 @@
 name,result,time,prop
 goal1.smt2,success,6.22 ms,(forall ((n Nat) (xs Lst)) (= (append (take n xs) (drop n xs)) xs)) ; G1
+goal2.smt2,success,6.68 ms,(forall ((n Nat) (l Lst) (m Lst)) (= (plus (count n l) (count n m)) (count n (append l m)))) ; G2
+goal3.smt2,success,6.46 ms,(forall ((n Nat) (l Lst) (m Lst)) (leq (count n l) (count n (append l m)))) ; G3
+goal4.smt2,success,4.04 ms,(forall ((n Nat) (l Lst)) (= (plus (succ zero) (count n l)) (count n (cons n l)))) ; G4
+goal5.smt2,success,4.43 ms,(forall ((n Nat) (x Nat) (l Lst)) (=> (= n x) (= (plus (succ zero) (count n l)) (count n (cons x l))))) ; G5
+goal6.smt2,success,3.14 ms,(forall ((n Nat) (m Nat)) (= (minus n (plus n m)) zero)) ; G6
+goal7.smt2,success,3.94 ms,(forall ((n Nat) (m Nat)) (= (minus (plus n m) n) m)) ; G7
+goal8.smt2,success,3.97 ms,(forall ((k Nat) (n Nat) (m Nat)) (= (minus (plus k m) (plus k n)) (minus m n))) ; G8
+goal9.smt2,success,6.30 ms,(forall ((i Nat) (j Nat) (k Nat)) (= (minus (minus i j) k) (minus i (plus j k)))) ; G9
 goal10.smt2,success,2.10 ms,(forall ((m Nat)) (= (minus m m) zero)) ; G10
 goal11.smt2,success,1.92 ms,(forall ((xs Lst)) (= (drop zero xs) xs)) ; G11
 goal12.smt2,success,3.46 ms,(forall ((n Nat) (xs Lst)) (= (drop n (lmap xs)) (lmap (drop n xs)))) ; G12
@@ -10,7 +18,6 @@ goal16.smt2,success,1.82 ms,(forall ((xs Lst) (x Nat)) (=> (= xs nil) (= (last (
 goal17.smt2,success,1.88 ms,(forall ((n Nat)) (= (leq n zero) (= n zero))) ; G17
 goal18.smt2,success,3.23 ms,(forall ((i Nat) (m Nat)) (less i (succ (plus i m)))) ; G18
 goal19.smt2,success,4.13 ms,(forall ((n Nat) (xs Lst)) (= (len (drop n xs)) (minus (len xs) n))) ; G19
-goal2.smt2,success,6.68 ms,(forall ((n Nat) (l Lst) (m Lst)) (= (plus (count n l) (count n m)) (count n (append l m)))) ; G2
 goal20.smt2,unknown,30610.17 ms,(forall ((l Lst)) (= (len (sort l)) (len l))) ; G20
 goal21.smt2,success,5.94 ms,(forall ((n Nat) (m Nat)) (leq n (plus n m))) ; G21
 goal22.smt2,success,20.29 ms,(forall ((a Nat) (b Nat) (c Nat)) (= (nmax (nmax a b) c) (nmax a (nmax b c)))) ; G22
@@ -21,7 +28,6 @@ goal26.smt2,success,6.67 ms,(forall ((x Nat) (l Lst) (t Lst)) (=> (mem x l) (mem
 goal27.smt2,success,4.59 ms,(forall ((x Nat) (l Lst) (t Lst)) (=> (mem x t) (mem x (append l t)))) ; G27
 goal28.smt2,success,4.77 ms,(forall ((x Nat) (l Lst)) (mem x (append l (cons x nil)))) ; G28
 goal29.smt2,success,3.02 ms,(forall ((x Nat) (l Lst)) (mem x (ins1 x l))) ; G29
-goal3.smt2,success,6.46 ms,(forall ((n Nat) (l Lst) (m Lst)) (leq (count n l) (count n (append l m)))) ; G3
 goal30.smt2,success,4.03 ms,(forall ((x Nat) (l Lst)) (mem x (insort x l))) ; G30
 goal31.smt2,success,51.88 ms,(forall ((a Nat) (b Nat) (c Nat)) (= (nmin (nmin a b) c) (nmin a (nmin b c)))) ; G31
 goal32.smt2,success,9.85 ms,(forall ((a Nat) (b Nat))(= (nmin a b) (nmin b a))) ; G32
@@ -32,7 +38,6 @@ goal36.smt2,success,2.78 ms,(forall ((xs Lst)) (=> (forall ((x Nat)) (P x)) (= (
 goal37.smt2,success,3.35 ms,(forall ((x Nat) (l Lst)) (not (mem x (delete x l)))) ; G37
 goal38.smt2,success,5.44 ms,(forall ((n Nat) (x Lst)) (= (count n (append x (cons n nil))) (succ (count n x)))) ; G38
 goal39.smt2,success,4.76 ms,(forall ((n Nat) (h Nat) (t Lst)) (= (plus (count n (cons h nil)) (count n t)) (count n (cons h t)))) ; G39
-goal4.smt2,success,4.04 ms,(forall ((n Nat) (l Lst)) (= (plus (succ zero) (count n l)) (count n (cons n l)))) ; G4
 goal40.smt2,success,2.18 ms,(forall ((xs Lst)) (= (take zero xs) nil)) ; G40
 goal41.smt2,success,4.73 ms,(forall ((n Nat) (xs Lst)) (= (take n (lmap xs)) (lmap (take n xs)))) ; G41
 goal42.smt2,success,4.77 ms,(forall ((n Nat) (x Nat) (xs Lst)) (= (take (succ n) (cons x xs)) (cons x (take n xs)))) ; G42
@@ -43,7 +48,6 @@ goal46.smt2,success,2.56 ms,(forall ((ys Lst)) (= (zip nil ys) znil)) ; G46
 goal47.smt2,unknown,30258.24 ms,(forall ((a Tree)) (= (height (mirror a)) (height a))) ; G47
 goal48.smt2,success,7.25 ms,(forall ((xs Lst)) (=> (not (= xs nil)) (= (butlast (append xs (cons (last xs) nil))) xs))) ; G48
 goal49.smt2,success,10.09 ms,(forall ((xs Lst) (ys Lst)) (= (butlast (append xs ys)) (ite (= ys nil) (butlast xs) (append xs (butlast ys))))) ; G49
-goal5.smt2,success,4.43 ms,(forall ((n Nat) (x Nat) (l Lst)) (=> (= n x) (= (plus (succ zero) (count n l)) (count n (cons x l))))) ; G5
 goal50.smt2,success,10.71 ms,(forall ((xs Lst)) (= (butlast xs) (take (minus (len xs) (succ zero)) xs))) ; G50
 goal51.smt2,success,4.52 ms,(forall ((xs Lst) (x Nat)) (= (butlast (append xs (cons x nil))) xs)) ; G51
 goal52.smt2,unknown,32590.62 ms,(forall ((n Nat) (l Lst)) (= (count n l) (count n (rev l)))) ; G52
@@ -54,7 +58,6 @@ goal56.smt2,success,8.41 ms,(forall ((n Nat) (xs Lst) (ys Lst)) (= (drop n (appe
 goal57.smt2,success,15.11 ms,(forall ((n Nat) (m Nat) (xs Lst)) (= (drop n (drop m xs)) (drop (plus n m) xs))) ; G57
 goal58.smt2,success,7.00 ms,(forall ((n Nat) (m Nat) (xs Lst)) (= (drop n (take m xs)) (take (minus m n) (drop n xs)))) ; G58
 goal59.smt2,success,7.30 ms,(forall ((n Nat) (xs Lst) (ys Lst)) (= (zdrop n (zip xs ys)) (zip (drop n xs) (drop n ys)))) ; G59
-goal6.smt2,success,3.14 ms,(forall ((n Nat) (m Nat)) (= (minus n (plus n m)) zero)) ; G6
 goal60.smt2,success,3.90 ms,(forall ((xs Lst) (ys Lst)) (=> (= ys nil) (= (last (append xs ys)) (last xs)))) ; G60
 goal61.smt2,success,5.68 ms,(forall ((xs Lst) (ys Lst)) (=> (not (= ys nil)) (= (last (append xs ys)) (last ys)))) ; G61
 goal62.smt2,success,5.90 ms,(forall ((xs Lst) (ys Lst)) (= (last (append xs ys)) (ite (= ys nil) (last xs) (last ys)))) ; G62
@@ -65,7 +68,6 @@ goal66.smt2,unknown,30019.36 ms,(forall ((i Nat) (m Nat)) (less i (succ (plus m 
 goal67.smt2,unknown,30016.85 ms,(forall ((xs Lst)) (leq (len (filter xs)) (len xs))) ; G67
 goal68.smt2,success,6.43 ms,(forall ((xs Lst)) (= (len (butlast xs)) (minus (len xs) (succ zero)))) ; G68
 goal69.smt2,unknown,30007.52 ms,(forall ((x Nat) (l Lst)) (leq (len (delete x l)) (len l))) ; G69
-goal7.smt2,success,3.94 ms,(forall ((n Nat) (m Nat)) (= (minus (plus n m) n) m)) ; G7
 goal70.smt2,unknown,30005.77 ms,(forall ((n Nat) (m Nat)) (leq n (plus m n))) ; G70
 goal71.smt2,success,5.29 ms,(forall ((n Nat) (m Nat)) (=> (leq m n) (leq m (succ n)))) ; G71
 goal72.smt2,unknown,30053.63 ms,(forall ((x Nat) (y Nat) (l Lst)) (=> (less x y) (= (mem x (insort y l)) (mem x l)))) ; G72
@@ -76,7 +78,6 @@ goal76.smt2,unknown,30212.91 ms,(forall ((i Nat) (xs Lst)) (= (rev (take i xs)) 
 goal77.smt2,success,4.80 ms,(forall ((n Nat) (h Nat) (x Lst)) (=> (not (= n h)) (= (count n (append x (cons h nil))) (count n x)))) ; G77
 goal78.smt2,success,5.28 ms,(forall ((n Nat) (h Nat) (t Lst)) (= (plus (count n t) (count n (cons h nil))) (count n (cons h t)))) ; G78
 goal79.smt2,unknown,30177.35 ms,(forall ((x Nat) (l Lst)) (=> (sorted l) (sorted (insort x l)))) ; G79
-goal8.smt2,success,3.97 ms,(forall ((k Nat) (n Nat) (m Nat)) (= (minus (plus k m) (plus k n)) (minus m n))) ; G8
 goal80.smt2,unknown,30004.99 ms,(forall ((l Lst)) (sorted (sort l))) ; G80
 goal81.smt2,success,6.02 ms,(forall ((m Nat) (n Nat) (k Nat)) (= (minus (minus (succ m) n) (succ k)) (minus (minus m n) k))) ; G81
 goal82.smt2,success,8.88 ms,(forall ((n Nat) (xs Lst) (ys Lst)) (= (take n (append xs ys)) (append (take n xs) (take (minus n (len xs)) ys)))) ; G82
@@ -85,4 +86,3 @@ goal84.smt2,success,9.58 ms,(forall ((n Nat) (xs Lst) (ys Lst)) (= (ztake n (zip
 goal85.smt2,success,11.96 ms,(forall ((xs Lst) (ys Lst) (zs Lst)) (= (zip (append xs ys) zs) (zappend (zip xs (take (len xs) zs)) (zip ys (drop (len xs) zs))))) ; G85
 goal86.smt2,success,12.75 ms,(forall ((xs Lst) (ys Lst) (zs Lst)) (= (zip xs (append ys zs)) (zappend (zip (take (len ys) xs) ys) (zip (drop (len ys) xs) zs)))) ; G86
 goal87.smt2,unknown,30026.64 ms,(forall ((xs Lst) (ys Lst)) (=> (= (len xs) (len ys)) (= (zip (rev xs) (rev ys)) (zrev (zip xs ys))))) ; G87
-goal9.smt2,success,6.30 ms,(forall ((i Nat) (j Nat) (k Nat)) (= (minus (minus i j) k) (minus i (plus j k)))) ; G9
