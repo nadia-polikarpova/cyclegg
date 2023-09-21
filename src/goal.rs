@@ -11,7 +11,7 @@ use crate::config::*;
 use crate::egraph::*;
 use crate::parser::RawEquation;
 
-// We will use SymbolLang with no analysis for now
+// We will use SymbolLang for now
 pub type Eg = EGraph<SymbolLang, ConstructorFolding>;
 pub type Rw = Rewrite<SymbolLang, ConstructorFolding>;
 
@@ -164,13 +164,17 @@ impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
 /// The set of constructors in an e-class.
 /// The order of variants is important: since we use the derived order during the merge.
 #[derive(Debug, PartialEq, PartialOrd, Eq, Ord, Clone)]
-pub enum Constructors {
-  /// No constructors
-  Zero,
-  /// Single constructor
-  One(SymbolLang),
-  /// At least two different constructors (inconsistency)
-  Two(SymbolLang, SymbolLang),
+pub enum CanonicalForm {
+  /// This class has neither constructors nor variables
+  Stuck,
+  /// This class has a variable but no constructors
+  Var(SymbolLang),
+  /// This class has a single constructor;
+  /// because our constructor injectivity analysis merges the children of the same constructor,
+  /// there cannot be two different constructor enodes with the same head constructor in an e-class.
+  Const(SymbolLang),
+  /// This class has at least two different constructors (inconsistency)
+  Inconsistent(SymbolLang, SymbolLang),
 }
 
 #[derive(Default, Clone)]
@@ -182,16 +186,16 @@ pub struct ConstructorFolding {
 }
 
 impl Analysis<SymbolLang> for ConstructorFolding {
-  type Data = Constructors;
+  type Data = CanonicalForm;
 
   fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {
     // If we are merging classes with two different constructors,
     // record that this class is now inconsistent
     // (and remember both constructors, we'll need them to build an explanation)
-    if let Constructors::One(n1) = to {
-      if let Constructors::One(ref n2) = from {
+    if let CanonicalForm::Const(n1) = to {
+      if let CanonicalForm::Const(ref n2) = from {
         if n1.op != n2.op {
-          *to = Constructors::Two(n1.clone(), n2.clone());
+          *to = CanonicalForm::Inconsistent(n1.clone(), n2.clone());
           return DidMerge(true, true);
         } else {
           // Two terms with the same head constructor
@@ -206,9 +210,11 @@ impl Analysis<SymbolLang> for ConstructorFolding {
 
   fn make(_: &EGraph<SymbolLang, Self>, enode: &SymbolLang) -> Self::Data {
     if is_constructor(enode.op.into()) {
-      Constructors::One(enode.clone())
+      CanonicalForm::Const(enode.clone())
+    } else if enode.children.is_empty() {
+      CanonicalForm::Var(enode.clone())
     } else {
-      Constructors::Zero
+      CanonicalForm::Stuck
     }
   }
 
@@ -619,7 +625,7 @@ impl<'a> Goal<'a> {
     } else {
       // Check if this case in unreachable (i.e. if there are any inconsistent e-classes in the e-graph)
       let res = self.egraph.classes().find_map(|eclass| {
-        if let Constructors::Two(n1, n2) = &eclass.data {
+        if let CanonicalForm::Inconsistent(n1, n2) = &eclass.data {
           if CONFIG.verbose {
             println!("{}: {} = {}", "UNREACHABLE".bright_red(), n1.op, n2.op);
           }
