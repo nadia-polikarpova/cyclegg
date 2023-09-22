@@ -1,6 +1,7 @@
 use colored::Colorize;
 use egg::*;
 use log::warn;
+use std::collections::HashSet;
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::fmt::Display;
 use std::time::{Duration, Instant};
@@ -173,16 +174,46 @@ pub enum CanonicalForm {
   /// because our constructor injectivity analysis merges the children of the same constructor,
   /// there cannot be two different constructor enodes with the same head constructor in an e-class.
   Const(SymbolLang),
-  /// This class has at least two different constructors (inconsistency)
+  /// This class has at least two different constructors
+  /// or it contains an infinite term (this class is reachable from an argument of its constructor);
+  /// in any case, this is an inconsistency.
   Inconsistent(SymbolLang, SymbolLang),
 }
 
 #[derive(Default, Clone)]
-pub struct ConstructorFolding {
-  /// If we have merged two classes with the same constructor,
-  /// remember this, so that modify can unify their parameters
-  /// (making use of constructor injectivity)
-  pub merged_constructors: Option<(SymbolLang, SymbolLang)>,
+pub struct ConstructorFolding {}
+
+impl ConstructorFolding {
+  /// Check if the canonical form of eclass id (whose constructor node is n)
+  /// has a cycle back to itself made up of only constructors.
+  /// This means that the eclass represents an infinite term.
+  fn is_canonical_cycle(egraph: &Eg, n: &SymbolLang, id: Id) -> bool {
+    // We have to keep track of visited nodes because there might also be a lasso
+    // (i.e. a cycle not starting at id)
+    let mut visited: HashSet<Id> = HashSet::new();
+    visited.insert(id);
+    Self::is_reachable(egraph, n, id, &mut visited)
+  }
+
+  fn is_reachable(egraph: &Eg, n: &SymbolLang, id: Id, visited: &mut HashSet<Id>) -> bool {
+    n.children.iter().any(|c| {
+      let c = egraph.find(*c);
+      if c == id {
+        true
+      } else if visited.contains(&c) {
+        // We return false here because a) this might just be a DAG and
+        // b) if there is a cycle at c, it will be detected in c's modify call
+        false
+      } else {
+        visited.insert(c);
+        if let CanonicalForm::Const(n2) = &egraph[c].data {
+          Self::is_reachable(egraph, n2, id, visited)
+        } else {
+          false
+        }
+      }
+    })
+  }
 }
 
 impl Analysis<SymbolLang> for ConstructorFolding {
@@ -197,10 +228,6 @@ impl Analysis<SymbolLang> for ConstructorFolding {
         if n1.op != n2.op {
           *to = CanonicalForm::Inconsistent(n1.clone(), n2.clone());
           return DidMerge(true, true);
-        } else {
-          // Two terms with the same head constructor
-          self.merged_constructors = Some((n1.clone(), n2.clone()));
-          return DidMerge(false, true);
         }
       }
     }
@@ -218,25 +245,52 @@ impl Analysis<SymbolLang> for ConstructorFolding {
     }
   }
 
-  fn modify(egraph: &mut EGraph<SymbolLang, Self>, _: Id) {
-    if let Some((n1, n2)) = egraph.analysis.merged_constructors.take() {
-      // The extraction is only here for logging purposes
-      let extractor = Extractor::new(egraph, AstSize);
-      let expr1 = extract_with_node(&n1, &extractor);
-      let expr2 = extract_with_node(&n2, &extractor);
-      if CONFIG.verbose && expr1.to_string() != expr2.to_string() {
-        println!("INJECTIVITY {} = {}", expr1, expr2);
+  fn modify(egraph: &mut EGraph<SymbolLang, Self>, id: Id) {
+    if let CanonicalForm::Const(ref n1) = egraph[id].data {
+      let n1 = n1.clone();
+      // We have just merged something into a constructor.
+      // 1) Check if there are any other constructors in this class with the same head and union their children
+      let other_constructors: Vec<SymbolLang> = egraph[id]
+        .nodes
+        .iter()
+        .filter(|n2| n1 != **n2 && n1.op == n2.op)
+        .cloned()
+        .collect();
+
+      for n2 in other_constructors {
+        // The extraction is only here for logging purposes
+        let extractor = Extractor::new(egraph, AstSize);
+        let expr1 = extract_with_node(&n1, &extractor);
+        let expr2 = extract_with_node(&n2, &extractor);
+        if CONFIG.verbose && expr1.to_string() != expr2.to_string() {
+          println!("INJECTIVITY {} = {}", expr1, expr2);
+        }
+        // Unify the parameters of the two constructors
+        for (c1, c2) in n1.children.iter().zip(n2.children.iter()) {
+          let c1 = egraph.find(*c1);
+          let c2 = egraph.find(*c2);
+          if c1 != c2 {
+            egraph.union_trusted(
+              c1,
+              c2,
+              format!("constructor-injective {} = {}", expr1, expr2),
+            );
+          }
+        }
       }
-      // Unify the parameters of the two constructors
-      for (c1, c2) in n1.children.iter().zip(n2.children.iter()) {
-        let c1 = egraph.find(*c1);
-        let c2 = egraph.find(*c2);
-        if c1 != c2 {
-          egraph.union_trusted(
-            c1,
-            c2,
-            format!("constructor-injective {} = {}", expr1, expr2),
-          );
+      // 2) Check if we created a cycle made up of only constructors,
+      // and if so, report inconsistency (infinite term)
+      if let Some(n2) = egraph[id].nodes.iter().find(|n| n.op != n1.op) {
+        // This can only happen if there is a non-constructor node in the class
+        if Self::is_canonical_cycle(egraph, &n1, id) {
+          // The extraction is only here for logging purposes
+          let extractor = Extractor::new(egraph, AstSize);
+          let expr1 = extract_with_node(&n1, &extractor);
+          let expr2 = extract_with_node(n2, &extractor); // extractor.find_best(id).1;
+          if CONFIG.verbose {
+            println!("INFINITE TERM {} = {}", expr1, expr2);
+          }
+          egraph[id].data = CanonicalForm::Inconsistent(n1.clone(), n2.clone());
         }
       }
     }

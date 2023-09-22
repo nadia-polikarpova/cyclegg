@@ -458,13 +458,12 @@
   Nil
 )
 
-(//
-  (=== prop_47 (t) ((Tree a))
-    (height (mirror t))
-    (height t)
-    ((=> (max ?a ?b) (max ?b ?a)))
-  )
+(=== prop_47 (t) ((Tree a))
+  (height (mirror t))
+  (height t)
 )
+(//(=> (max ?a ?b) (max ?b ?a)))
+
 
 (// This is an example that requires explicitly grounding the premise)
 (==> prop_48 (xs) ((List a))
