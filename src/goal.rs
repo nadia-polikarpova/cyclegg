@@ -154,7 +154,8 @@ impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
       .filter(|(_, mb)| mb.is_some()) // filter out undefined variables
       .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1))
       .collect(); // actually look up the expression by class id
-                  // Check that the expressions are smaller variables
+
+    // Check that the expressions are smaller variables
     let terminates = self.smaller_tuple(&pairs);
     let premise_holds = self.check_premises(&pairs, egraph);
     // println!("trying IH with subst {}; checks: {} {}", SmallerVar::pretty_subst(&pairs), terminates, premise_holds);
@@ -184,6 +185,30 @@ pub enum CanonicalForm {
 pub struct ConstructorFolding {}
 
 impl ConstructorFolding {
+  /// Extract the canonical form of an e-class if it exists.
+  /// Note: this function does not check for cycles, so it should only be called
+  /// after the analysis has finished.
+  pub fn extract_canonical(egraph: &Eg, id: Id) -> Option<Expr> {
+    match &egraph[id].data {
+      CanonicalForm::Const(n) => {
+        // Extract canonical forms of the children:
+        let children: HashMap<Id, Expr> =
+          n.children
+            .iter()
+            .try_fold(HashMap::new(), |mut acc, child| {
+              let child_expr = Self::extract_canonical(egraph, *child)?;
+              acc.insert(*child, child_expr);
+              Some(acc)
+            })?;
+        // Join those forms into a single expression:
+        let expr = n.join_recexprs(|child_id| children.get(&child_id).unwrap());
+        Some(expr)
+      }
+      CanonicalForm::Var(n) => Some(vec![n.clone()].into()),
+      _ => None,
+    }
+  }
+
   /// Check if the canonical form of eclass id (whose constructor node is n)
   /// has a cycle back to itself made up of only constructors.
   /// This means that the eclass represents an infinite term.
@@ -667,6 +692,10 @@ impl<'a> Goal<'a> {
   /// Check if the goal has been discharged,
   /// and if so, create an explanation.
   pub fn check_validity(&mut self) {
+    // for eclass in self.egraph.classes() {
+    //   println!("{}: {:?} CANONICAL {}", eclass.id, eclass.nodes, ConstructorFolding::extract_canonical(&self.egraph, eclass.id).unwrap_or(vec![].into()));
+    // }
+
     if self.egraph.find(self.eq.lhs.id) == self.egraph.find(self.eq.rhs.id) {
       // We have shown that LHS == RHS
       self.explanation = Some(

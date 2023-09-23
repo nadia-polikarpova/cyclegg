@@ -24,7 +24,6 @@ cargo run -- examples/add.ceg
 
 #### Search
 - Canonical forms for termination checking:
-    - Extend constructor analysis to keep track of variables, add a canonical form extractor
     - In SmallerVars check: compare canonical forms of the old and new parameter and require that the old one has the new one wrapped in a constructor
     - For grounding: at every split, replace the var being split with the smaller var in all prev_instantiations
         (store prev_instantiations in terms of eclasses so that we can get their canonical forms)
