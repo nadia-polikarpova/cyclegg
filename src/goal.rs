@@ -13,8 +13,8 @@ use crate::egraph::*;
 use crate::parser::RawEquation;
 
 // We will use SymbolLang for now
-pub type Eg = EGraph<SymbolLang, ConstructorFolding>;
-pub type Rw = Rewrite<SymbolLang, ConstructorFolding>;
+pub type Eg = EGraph<SymbolLang, CanonicalFormAnalysis>;
+pub type Rw = Rewrite<SymbolLang, CanonicalFormAnalysis>;
 
 /// A special scrutinee name used to signal that case split bound has been exceeded
 const BOUND_EXCEEDED: &str = "__";
@@ -42,7 +42,6 @@ impl SmallerVar {
   /// Is the range of subst smaller than its domain, when compared as a tuple?
   /// For now implements a sound but incomplete measure,
   /// where all components of the range need to be no larger, and at least one has to be strictly smaller.
-  /// TODO: Implement a fancy automata-theoretic check here.
   fn smaller_tuple(&self, subst: &Vec<(&Symbol, Expr)>) -> bool {
     let mut has_strictly_smaller = false;
     let info = SmallerVar::pretty_subst(subst.as_slice());
@@ -141,7 +140,7 @@ impl SmallerVar {
   }
 }
 
-impl Condition<SymbolLang, ConstructorFolding> for SmallerVar {
+impl Condition<SymbolLang, CanonicalFormAnalysis> for SmallerVar {
   /// Returns true if the substitution is into a smaller tuple of variables
   fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
     let extractor = Extractor::new(egraph, AstSize);
@@ -172,8 +171,8 @@ pub enum CanonicalForm {
   /// This class has a variable but no constructors
   Var(SymbolLang),
   /// This class has a single constructor;
-  /// because our constructor injectivity analysis merges the children of the same constructor,
-  /// there cannot be two different constructor enodes with the same head constructor in an e-class.
+  /// because the analysis merges the children of the same constructor,
+  /// there cannot be two different constructor e-nodes with the same head constructor in an e-class.
   Const(SymbolLang),
   /// This class has at least two different constructors
   /// or it contains an infinite term (this class is reachable from an argument of its constructor);
@@ -182,9 +181,9 @@ pub enum CanonicalForm {
 }
 
 #[derive(Default, Clone)]
-pub struct ConstructorFolding {}
+pub struct CanonicalFormAnalysis {}
 
-impl ConstructorFolding {
+impl CanonicalFormAnalysis {
   /// Extract the canonical form of an e-class if it exists.
   /// Note: this function does not check for cycles, so it should only be called
   /// after the analysis has finished.
@@ -241,7 +240,7 @@ impl ConstructorFolding {
   }
 }
 
-impl Analysis<SymbolLang> for ConstructorFolding {
+impl Analysis<SymbolLang> for CanonicalFormAnalysis {
   type Data = CanonicalForm;
 
   fn merge(&mut self, to: &mut Self::Data, from: Self::Data) -> DidMerge {

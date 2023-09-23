@@ -137,6 +137,22 @@ pub enum StructuralComparison {
   Incomparable,
 }
 
+/// Check if sub is a subterm of sup
+pub fn is_subterm(sub: &Expr, sup: &Expr) -> StructuralComparison {
+  // Convert both expressions to strings and check if one is a substring of the other
+  let sub_str = sub.to_string();
+  let sup_str = sup.to_string();
+  if sup_str.contains(&sub_str) {
+    if sub_str.len() < sup_str.len() {
+      StructuralComparison::LT
+    } else {
+      StructuralComparison::LE
+    }
+  } else {
+    StructuralComparison::Incomparable
+  }
+}
+
 pub fn map_sexp<F>(f: F, sexp: &Sexp) -> Sexp
 where
   F: Copy + Fn(&str) -> Sexp,
@@ -164,19 +180,11 @@ pub fn contains_function(sexp: &Sexp) -> bool {
   }
 }
 
-fn starts_uppercase(string: &str) -> bool {
-  string
-    .chars()
-    .next()
-    .map(|c| c.is_ascii_uppercase())
-    .unwrap_or(false)
-}
-
 fn find_instantiations_helper(proto: &Sexp, actual: &Sexp, instantiations_map: &mut SSubst) {
   match (proto, actual) {
     (Sexp::Empty, _) | (_, Sexp::Empty) => unreachable!(),
     (Sexp::String(proto_str), actual_sexp) => {
-      if starts_uppercase(proto_str) {
+      if is_constructor(proto_str) {
         // It's a constant in the proto, which means it should be a constant
         // (i.e. a string with the same value) in the actual
         assert!(actual_sexp.is_string());
