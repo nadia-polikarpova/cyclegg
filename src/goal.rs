@@ -280,18 +280,16 @@ impl Analysis<SymbolLang> for ConstructorFolding {
       }
       // 2) Check if we created a cycle made up of only constructors,
       // and if so, report inconsistency (infinite term)
-      if let Some(n2) = egraph[id].nodes.iter().find(|n| n.op != n1.op) {
-        // This can only happen if there is a non-constructor node in the class
-        if Self::is_canonical_cycle(egraph, &n1, id) {
-          // The extraction is only here for logging purposes
-          let extractor = Extractor::new(egraph, AstSize);
-          let expr1 = extract_with_node(&n1, &extractor);
-          let expr2 = extract_with_node(n2, &extractor); // extractor.find_best(id).1;
-          if CONFIG.verbose {
-            println!("INFINITE TERM {} = {}", expr1, expr2);
-          }
-          egraph[id].data = CanonicalForm::Inconsistent(n1.clone(), n2.clone());
+      if Self::is_canonical_cycle(egraph, &n1, id) {
+        // The extraction is only here for logging purposes
+        let extractor = Extractor::new(egraph, AstSize);
+        let n2 = extractor.find_best_node(id);
+        let expr1 = extract_with_node(&n1, &extractor);
+        let expr2 = extract_with_node(n2, &extractor);
+        if CONFIG.verbose {
+          println!("INFINITE TERM {} = {}", expr1, expr2);
         }
+        egraph[id].data = CanonicalForm::Inconsistent(n1.clone(), n2.clone());
       }
     }
   }
@@ -680,13 +678,13 @@ impl<'a> Goal<'a> {
       // Check if this case in unreachable (i.e. if there are any inconsistent e-classes in the e-graph)
       let res = self.egraph.classes().find_map(|eclass| {
         if let CanonicalForm::Inconsistent(n1, n2) = &eclass.data {
-          if CONFIG.verbose {
-            println!("{}: {} = {}", "UNREACHABLE".bright_red(), n1.op, n2.op);
-          }
           // This is here only for the purpose of proof generation:
           let extractor = Extractor::new(&self.egraph, AstSize);
           let expr1 = extract_with_node(n1, &extractor);
           let expr2 = extract_with_node(n2, &extractor);
+          if CONFIG.verbose {
+            println!("{}: {} = {}", "UNREACHABLE".bright_red(), expr1, expr2);
+          }
           Some((expr1, expr2))
         } else {
           None
