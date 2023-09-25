@@ -1,5 +1,5 @@
 use egg::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Denotation of an egraph (or its subgraph)
 /// is a map from eclass ids to sets of expressions
@@ -91,4 +91,9 @@ pub fn extract_with_node<L: Language, A: Analysis<L>, CF: CostFunction<L>>(
   extractor: &Extractor<CF, L, A>,
 ) -> RecExpr<L> {
   enode.join_recexprs(|id| extractor.find_best(id).1)
+}
+
+/// Variables of a pattern as a set
+pub fn var_set<L: Language>(pattern: &Pattern<L>) -> HashSet<Var> {
+  pattern.vars().iter().cloned().collect()
 }

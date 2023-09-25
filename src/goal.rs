@@ -806,7 +806,11 @@ impl<'a> Goal<'a> {
       // If we are doing cyclic proofs: make lemmas out of all LHS and RHS variants
       get_all_expressions(&self.egraph, vec![lhs_id, rhs_id])
     } else {
-      // Otherwise, only use the original LHS and RHS
+      // Otherwise, only use the original LHS and RHS.
+      // NOTE: this will try to add the IH every time we case split,
+      // and on later iterations the termination check will be unsound
+      // because the IH contains variables that are not in scrutinees.
+      // But that's okay because we won't add the IH more than once.
       vec![
         (lhs_id, vec![self.eq.lhs.expr.clone()]),
         (rhs_id, vec![self.eq.rhs.expr.clone()]),
@@ -830,14 +834,32 @@ impl<'a> Goal<'a> {
         if (CONFIG.irreducible_only && self.is_reducible(rhs_expr)) || has_guard_wildcards(&rhs) {
           continue;
         }
+
+        let lhs_vars = var_set(&lhs);
+        let rhs_vars = var_set(&rhs);
+        let lemma_vars = lhs_vars.union(&rhs_vars).cloned().collect();
+
+        // If any of my premises contain variables that are not present in lhs or rhs,
+        // skip because we don't know how to check such a premise
+        if !self.premises.iter().all(|eq| {
+          let premise_lhs_vars = var_set(&to_pattern(&eq.lhs.expr, is_var));
+          let premise_rhs_vars = var_set(&to_pattern(&eq.rhs.expr, is_var));
+          let premise_vars: HashSet<Var> =
+            premise_lhs_vars.union(&premise_rhs_vars).cloned().collect();
+          premise_vars.is_subset(&lemma_vars)
+        }) {
+          continue;
+        }
+
         // Pick out those scrutinees that occur in the lemma;
         // this is not strictly necessary, but we'd like to get rid of junk like BOUND_EXCEEDED
         let vars: Vec<Symbol> = self
           .scrutinees
           .iter()
-          .filter(|x| lhs.vars().contains(&to_wildcard(x)) || rhs.vars().contains(&to_wildcard(x)))
+          .filter(|x| lemma_vars.contains(&to_wildcard(x)))
           .cloned()
           .collect();
+
         let condition = SmallerVar {
           // create initial subst by looking up the scrutinees in the egraph
           initial_subst: lookup_vars(&self.egraph, vars.iter()),
@@ -847,7 +869,7 @@ impl<'a> Goal<'a> {
           premises: self.premises.clone(),
         };
         let mut added_lemma = false;
-        if rhs.vars().iter().all(|x| lhs.vars().contains(x)) {
+        if rhs_vars.is_subset(&lhs_vars) {
           // if rhs has no extra wildcards, create a lemma lhs => rhs
           Goal::add_lemma(lhs.clone(), rhs.clone(), condition.clone(), &mut rewrites);
           added_lemma = true;
@@ -855,7 +877,7 @@ impl<'a> Goal<'a> {
             continue;
           };
         }
-        if (is_cyclic || !added_lemma) && lhs.vars().iter().all(|x| rhs.vars().contains(x)) {
+        if (is_cyclic || !added_lemma) && lhs_vars.is_subset(&rhs_vars) {
           // if lhs has no extra wildcards, create a lemma rhs => lhs;
           // in non-cyclic mode, a single direction of IH is always sufficient
           // (because grounding adds all instantiations we could possibly care about).
