@@ -24,141 +24,194 @@ pub const IH_EQUALITY_PREFIX: &str = "ih-equality-"; // TODO: remove
 /// Condition that checks whether the substitution is into a smaller tuple of variable
 #[derive(Clone)]
 pub struct SmallerVar {
-  pub scrutinees: Vec<Symbol>,
+  /// Lemma's free variables
+  pub free_vars: Vec<Symbol>,
+  /// A substitution from free variables
+  /// to the original e-classes these variables came from
+  pub initial_subst: Subst,
+  /// TODO: remove this
   pub ty_splits: SSubst,
+  /// All premises that must hold for this lemma to apply,
+  /// expressed in terms of the free variables variables
   pub premises: Vec<Equation>,
 }
 
 impl SmallerVar {
   /// Substitution as a string, for debugging purposes
-  fn pretty_subst(subst: &[(&Symbol, Expr)]) -> String {
+  fn pretty_subst(subst: &Vec<(Symbol, Expr, Expr)>) -> String {
     let strings: Vec<String> = subst
       .iter()
-      .map(|p| format!("{} -> {}", &p.0.to_string(), &p.1.to_string()))
+      .map(|(x, orig, new)| {
+        format!(
+          "{} = {} -> {}",
+          &x.to_string(),
+          &orig.to_string(),
+          &new.to_string()
+        )
+      })
       .collect();
     strings.join(", ")
   }
 
-  /// Is the range of subst smaller than its domain, when compared as a tuple?
+  /// Are the canonical forms of the e-classes in new_subst strictly smaller than those in orig_subst?
   /// For now implements a sound but incomplete measure,
-  /// where all components of the range need to be no larger, and at least one has to be strictly smaller.
-  fn smaller_tuple(&self, subst: &Vec<(&Symbol, Expr)>) -> bool {
+  /// where all forms need to be no larger, and at least one has to be strictly smaller.
+  fn smaller_tuple(&self, triples: &Vec<(Symbol, Expr, Expr)>) -> bool {
     let mut has_strictly_smaller = false;
-    let info = SmallerVar::pretty_subst(subst.as_slice());
-    for (var, expr) in subst {
-      let var_name = var.to_string();
-      let expr_name = expr.to_string();
-      if CONFIG.structural_comparison {
-        // Suppose a cyclic lemma is defined over the variable l0
-        //
-        // Suppose also that
-        //   - After a case split, l0 = Cons x1 l1
-        //   - After a second case split, l1 = Cons x2 l2
-        //
-        // With a structural comparison, we will allow the cyclic lemma to be
-        // used on Cons x1 Nil, because we know that Nil is always smaller than
-        // l1.
-        //
-        // In practice, this is probably not often useful.
-        let sexp = parser::parse_str(&expr_name).unwrap();
-        if contains_function(&sexp) {
-          return false;
-        }
-        let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, &self.ty_splits));
-        let structural_comparison_result = structural_comparision(&sexp, var_sexp);
-        // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
-        if let StructuralComparison::LT = structural_comparison_result {
-          // warn!("{} is smaller than {}", sexp, var_name);
+    for (_, orig, new) in triples {
+      match is_subterm(&new, &orig) {
+        StructuralComparison::LT => {
           has_strictly_smaller = true;
-        } else if let StructuralComparison::Incomparable = structural_comparison_result {
-          warn!(
-            "cannot apply lemma with subst [{}], reason: {:?}",
-            info, structural_comparison_result
-          );
+        }
+        StructuralComparison::Incomparable => {
           return false;
         }
-      } else {
-        // In this branch we only check if the arguments are variables or
-        // directly matching constructors.
-        if is_descendant(&expr_name, &var_name) {
-          // Target is strictly smaller than source
-          has_strictly_smaller = true;
-        } else if expr_name != var_name {
-          // Target is neither strictly smaller nor equal to source
-          // warn!("cannot apply lemma with subst [{}]", info);
-          return false;
-        }
+        _ => (),
       }
     }
-    if has_strictly_smaller {
-      warn!("applying lemma with subst [{}]", info);
-    } else {
-      warn!("cannot apply lemma with subst [{}]", info);
-    }
+    // let info = SmallerVar::pretty_subst(subst.as_slice());
+    // for (var, expr) in subst {
+    //   let var_name = var.to_string();
+    //   let expr_name = expr.to_string();
+    //   if CONFIG.structural_comparison {
+    //     // Suppose a cyclic lemma is defined over the variable l0
+    //     //
+    //     // Suppose also that
+    //     //   - After a case split, l0 = Cons x1 l1
+    //     //   - After a second case split, l1 = Cons x2 l2
+    //     //
+    //     // With a structural comparison, we will allow the cyclic lemma to be
+    //     // used on Cons x1 Nil, because we know that Nil is always smaller than
+    //     // l1.
+    //     //
+    //     // In practice, this is probably not often useful.
+    //     let sexp = parser::parse_str(&expr_name).unwrap();
+    //     if contains_function(&sexp) {
+    //       return false;
+    //     }
+    //     let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, &self.ty_splits));
+    //     let structural_comparison_result = structural_comparision(&sexp, var_sexp);
+    //     // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
+    //     if let StructuralComparison::LT = structural_comparison_result {
+    //       // warn!("{} is smaller than {}", sexp, var_name);
+    //       has_strictly_smaller = true;
+    //     } else if let StructuralComparison::Incomparable = structural_comparison_result {
+    //       warn!(
+    //         "cannot apply lemma with subst [{}], reason: {:?}",
+    //         info, structural_comparison_result
+    //       );
+    //       return false;
+    //     }
+    //   } else {
+    //     // In this branch we only check if the arguments are variables or
+    //     // directly matching constructors.
+    //     if is_descendant(&expr_name, &var_name) {
+    //       // Target is strictly smaller than source
+    //       has_strictly_smaller = true;
+    //     } else if expr_name != var_name {
+    //       // Target is neither strictly smaller nor equal to source
+    //       // warn!("cannot apply lemma with subst [{}]", info);
+    //       return false;
+    //     }
+    //   }
+    // }
+    // if has_strictly_smaller {
+    //   warn!("applying lemma with subst [{}]", new_subst);
+    // } else {
+    //   warn!("cannot apply lemma with subst [{}]", new_subst);
+    // }
     has_strictly_smaller
   }
 
   /// Apply subst to self.premise (if any)
   /// and check whether the resulting terms are equal in the egraph
-  fn check_premise(premise: &Equation, subst: &[(&Symbol, Expr)], egraph: &mut Eg) -> bool {
-    // let info = SmallerVar::pretty_subst(subst.as_slice());
+  fn check_premise(
+    premise: &Equation,
+    triples: &Vec<(Symbol, Expr, Expr)>,
+    egraph: &mut Eg,
+  ) -> bool {
+    // let info = SmallerVar::pretty_subst(triples);
     // println!("checking premise {} = {} for {}", premise.lhs.sexp, premise.rhs.sexp, info);
-    let subst: SSubst = subst
+
+    // TODO: it's annoying having to convert everything to s-expressions and back
+    // but substituting over RecExprs is too much of a pain
+    // Convert triples to a substitution over s-expressions
+    let subst: SSubst = triples
       .iter()
-      .map(|(var, expr)| {
+      .map(|(var, _, new_expr)| {
         (
           var.to_string(),
-          symbolic_expressions::parser::parse_str(&expr.to_string()).unwrap(),
+          symbolic_expressions::parser::parse_str(&new_expr.to_string()).unwrap(),
         )
       })
       .collect();
 
-    let lhs = resolve_sexp(&premise.lhs.sexp, &subst);
-    let rhs = resolve_sexp(&premise.rhs.sexp, &subst);
-    // println!("{} == {}", lhs, rhs);
-    // convert to RecExprs:
-    let lhs: Expr = lhs.to_string().parse().unwrap();
-    let rhs: Expr = rhs.to_string().parse().unwrap();
-    // lookup the terms in the e-graph
-    // Is they are not there, we just say the condition is false
-    // TODO: add these terms to the e-graph as part of grounding.
+    // Perform the substitution
+    let lhs: Expr = resolve_sexp(&premise.lhs.sexp, &subst)
+      .to_string()
+      .parse()
+      .unwrap();
+    let rhs: Expr = resolve_sexp(&premise.rhs.sexp, &subst)
+      .to_string()
+      .parse()
+      .unwrap();
+
+    // Lookup the sides of the new premise in the egraph;
+    // they must be there, since we added them during grounding
     if let Some(lhs_id) = egraph.lookup_expr(&lhs) {
       if let Some(rhs_id) = egraph.lookup_expr(&rhs) {
         // println!("{} == {}", lhs_id, rhs_id);
         return lhs_id == rhs_id;
       }
     }
+    // TODO: this should be a panic because we should have added all premises during grounding
+    // panic!("premise {} = {} not found in egraph", lhs, rhs);
     false
   }
 
   /// Check all of the premises of this condition
-  fn check_premises(&self, subst: &[(&Symbol, Expr)], egraph: &mut Eg) -> bool {
+  fn check_premises(&self, triples: &Vec<(Symbol, Expr, Expr)>, egraph: &mut Eg) -> bool {
     self
       .premises
       .iter()
-      .all(|premise| SmallerVar::check_premise(premise, subst, egraph))
+      .all(|premise| SmallerVar::check_premise(premise, triples, egraph))
   }
 }
 
 impl Condition<SymbolLang, CanonicalFormAnalysis> for SmallerVar {
   /// Returns true if the substitution is into a smaller tuple of variables
   fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
-    let extractor = Extractor::new(egraph, AstSize);
-    // Lookup all variables in the subst; some may be undefined if the lemma has fewer parameters
-    let target_ids_mb = self.scrutinees.iter().map(|x| subst.get(to_wildcard(x)));
-    let pairs = self
-      .scrutinees
+    // Create an iterator over triples: (variable, old canonical form, new canonical form)
+    let triples = self
+      .free_vars
       .iter()
-      .zip(target_ids_mb) // zip variables with their substitutions
-      .filter(|(_, mb)| mb.is_some()) // filter out undefined variables
-      .map(|(v, mb)| (v, extractor.find_best(*mb.unwrap()).1))
-      .collect(); // actually look up the expression by class id
+      .map(|x| {
+        let v = to_wildcard(x);
+        // Subst must have all lemma variables defined
+        // because we did the filtering when creating SmallerVars
+        let new_id = subst.get(v).unwrap();
+        let orig_id = self.initial_subst.get(v).unwrap();
+        // If the actual argument of the lemma is not canonical, give up
+        let new_canonical = CanonicalFormAnalysis::extract_canonical(egraph, *new_id)?;
+        // Same for the original argument:
+        // it might not be canonical if it's inconsistent, in which case there's no point applying any lemmas
+        let orig_canonical = CanonicalFormAnalysis::extract_canonical(egraph, *orig_id)?;
+        Some((x.clone(), orig_canonical, new_canonical))
+      })
+      .collect::<Option<Vec<(Symbol, Expr, Expr)>>>();
 
-    // Check that the expressions are smaller variables
-    let terminates = self.smaller_tuple(&pairs);
-    let premise_holds = self.check_premises(&pairs, egraph);
-    // println!("trying IH with subst {}; checks: {} {}", SmallerVar::pretty_subst(&pairs), terminates, premise_holds);
-    terminates && premise_holds
+    match triples {
+      None => false, // All actual arguments must be canonical in order to be comparable to the formals
+      Some(triples) => {
+        // Check that the actuals are smaller than the formals
+        // and that the actual premise holds
+        let terminates = self.smaller_tuple(&triples);
+        // Let's not check the premises if the termination check doesn't hold:
+        let sound = terminates && self.check_premises(&triples, egraph);
+        // println!("trying IH with subst {}; checks: {} {}", SmallerVar::pretty_subst(&triples), terminates, sound);
+        sound
+      }
+    }
   }
 }
 
@@ -777,8 +830,18 @@ impl<'a> Goal<'a> {
         if (CONFIG.irreducible_only && self.is_reducible(rhs_expr)) || has_guard_wildcards(&rhs) {
           continue;
         }
+        // Pick out those scrutinees that occur in the lemma;
+        // this is not strictly necessary, but we'd like to get rid of junk like BOUND_EXCEEDED
+        let vars: Vec<Symbol> = self
+          .scrutinees
+          .iter()
+          .filter(|x| lhs.vars().contains(&to_wildcard(x)) || rhs.vars().contains(&to_wildcard(x)))
+          .cloned()
+          .collect();
         let condition = SmallerVar {
-          scrutinees: self.scrutinees.iter().cloned().collect(),
+          // create initial subst by looking up the scrutinees in the egraph
+          initial_subst: lookup_vars(&self.egraph, vars.iter()),
+          free_vars: vars,
           // TODO: Can we take a reference instead of cloning?
           ty_splits: self.ty_splits.clone(),
           premises: self.premises.clone(),

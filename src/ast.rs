@@ -388,6 +388,21 @@ where
   Pattern::from(pattern_ast)
 }
 
+/// Create a Subst by looking up the given variables in the given egraph
+pub fn lookup_vars<'a, I: Iterator<Item = &'a Symbol>, A: Analysis<SymbolLang>>(
+  egraph: &EGraph<SymbolLang, A>,
+  vars: I,
+) -> Subst {
+  let mut subst = Subst::default();
+  for var in vars {
+    match egraph.lookup(SymbolLang::leaf(*var)) {
+      Some(id) => subst.insert(to_wildcard(var), id),
+      None => panic!("lookup_vars: variable {} not found in egraph", var),
+    };
+  }
+  subst
+}
+
 // Environment: for now just a map from datatype names to constructor names
 pub type Env = HashMap<Symbol, (Vec<String>, Vec<Symbol>)>;
 
