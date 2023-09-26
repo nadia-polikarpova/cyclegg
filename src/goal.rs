@@ -556,7 +556,7 @@ pub struct Goal<'a> {
   pub explanation: Option<Explanation<SymbolLang>>,
   /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
   reductions: &'a Vec<Rw>,
-  lemmas: HashMap<String, (Pat, Pat, SmallerVar)>,
+  lemmas: HashMap<String, Rw>,
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
@@ -665,23 +665,7 @@ impl<'a> Goal<'a> {
 
   /// Saturate the goal by applying all available rewrites
   pub fn saturate(mut self) -> Self {
-    // FIXME: don't collect/clone?
-    let lemmas: Vec<Rw> = self
-      .lemmas
-      .iter()
-      .map(|(name, (lhs, rhs, cond))| {
-        Rewrite::new(
-          name,
-          lhs.clone(),
-          ConditionalApplier {
-            applier: rhs.clone(),
-            condition: cond.clone(),
-          },
-        )
-        .unwrap()
-      })
-      .collect();
-    let rewrites = self.reductions.iter().chain(lemmas.iter());
+    let rewrites = self.reductions.iter().chain(self.lemmas.values());
     let runner = Runner::default()
       .with_explanations_enabled()
       .with_egraph(self.egraph)
@@ -746,7 +730,7 @@ impl<'a> Goal<'a> {
     &mut self,
     state: &ProofState,
     is_cyclic: bool,
-  ) -> HashMap<String, (Pat, Pat, SmallerVar)> {
+  ) -> HashMap<String, Rw> {
     let lhs_id = self.egraph.find(self.eq.lhs.id);
     let rhs_id = self.egraph.find(self.eq.rhs.id);
     let is_var = |v| self.local_context.contains_key(v);
@@ -851,15 +835,16 @@ impl<'a> Goal<'a> {
     lhs: Pat,
     rhs: Pat,
     cond: SmallerVar,
-    rewrites: &mut HashMap<String, (Pat, Pat, SmallerVar)>,
+    rewrites: &mut HashMap<String, Rw>,
   ) {
     let name = format!("{}{}={}", LEMMA_PREFIX, lhs, rhs);
     // Insert the lemma into the rewrites map if it's not already there
-    match rewrites.entry(name) {
+    match rewrites.entry(name.clone()) {
       Entry::Occupied(_) => (),
       Entry::Vacant(entry) => {
         warn!("creating lemma: {} => {}", lhs, rhs);
-        entry.insert((lhs, rhs, cond));
+        let rw = Rewrite::new(name, lhs, ConditionalApplier {condition: cond, applier: rhs}).unwrap();
+        entry.insert(rw);
       }
     }
   }
