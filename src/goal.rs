@@ -69,57 +69,6 @@ impl SmallerVar {
         _ => (),
       }
     }
-    // let info = SmallerVar::pretty_subst(subst.as_slice());
-    // for (var, expr) in subst {
-    //   let var_name = var.to_string();
-    //   let expr_name = expr.to_string();
-    //   if CONFIG.structural_comparison {
-    //     // Suppose a cyclic lemma is defined over the variable l0
-    //     //
-    //     // Suppose also that
-    //     //   - After a case split, l0 = Cons x1 l1
-    //     //   - After a second case split, l1 = Cons x2 l2
-    //     //
-    //     // With a structural comparison, we will allow the cyclic lemma to be
-    //     // used on Cons x1 Nil, because we know that Nil is always smaller than
-    //     // l1.
-    //     //
-    //     // In practice, this is probably not often useful.
-    //     let sexp = parser::parse_str(&expr_name).unwrap();
-    //     if contains_function(&sexp) {
-    //       return false;
-    //     }
-    //     let var_sexp = &fix_singletons(recursively_resolve_variable(&var_name, &self.ty_splits));
-    //     let structural_comparison_result = structural_comparision(&sexp, var_sexp);
-    //     // warn!("structurally comparing {} to var {} (resolved to {}), result: {:?}", sexp, var_name, var_sexp, structural_comparison_result);
-    //     if let StructuralComparison::LT = structural_comparison_result {
-    //       // warn!("{} is smaller than {}", sexp, var_name);
-    //       has_strictly_smaller = true;
-    //     } else if let StructuralComparison::Incomparable = structural_comparison_result {
-    //       warn!(
-    //         "cannot apply lemma with subst [{}], reason: {:?}",
-    //         info, structural_comparison_result
-    //       );
-    //       return false;
-    //     }
-    //   } else {
-    //     // In this branch we only check if the arguments are variables or
-    //     // directly matching constructors.
-    //     if is_descendant(&expr_name, &var_name) {
-    //       // Target is strictly smaller than source
-    //       has_strictly_smaller = true;
-    //     } else if expr_name != var_name {
-    //       // Target is neither strictly smaller nor equal to source
-    //       // warn!("cannot apply lemma with subst [{}]", info);
-    //       return false;
-    //     }
-    //   }
-    // }
-    // if has_strictly_smaller {
-    //   warn!("applying lemma with subst [{}]", new_subst);
-    // } else {
-    //   warn!("cannot apply lemma with subst [{}]", new_subst);
-    // }
     has_strictly_smaller
   }
 
@@ -522,8 +471,10 @@ fn instantiate_new_ih_terms(
     .collect();
   for new_instantiation in new_instantiations.iter() {
     let resolved_instantiation = resolve_instantiation(new_instantiation);
+    // println!("new instantiation for {} : {:?}", var, resolved_instantiation);
     for term in terms.iter() {
       let new_term = recursively_resolve_sexp(&term.sexp, &resolved_instantiation);
+      // println!("new term: {}", new_term);
       ETerm::new(&new_term, egraph);
     }
   }
