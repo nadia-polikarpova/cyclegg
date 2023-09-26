@@ -561,8 +561,6 @@ pub struct Goal<'a> {
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
-  /// The top-level parameters to the goal
-  pub params: Vec<String>,
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
@@ -609,7 +607,6 @@ impl<'a> Goal<'a> {
       reductions,
       lemmas: HashMap::new(),
       local_context: Context::new(),
-      params: params.iter().map(|(p, _)| p.to_string()).collect(),
       guard_exprs: HashMap::new(),
       scrutinees: VecDeque::new(),
       // The only instantiation we've considered thus far is where every param maps to itself.
@@ -645,7 +642,6 @@ impl<'a> Goal<'a> {
       reductions: self.reductions,
       lemmas: HashMap::new(), // the lemmas will be re-generated immediately anyway
       local_context: self.local_context.clone(),
-      params: self.params.clone(),
       guard_exprs: self.guard_exprs.clone(),
       scrutinees: self.scrutinees.clone(),
       prev_var_instantiations: self.prev_var_instantiations.clone(),
