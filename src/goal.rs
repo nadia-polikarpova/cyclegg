@@ -561,16 +561,12 @@ pub struct Goal<'a> {
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
-  /// Map from a variable to its split (right now we only track data constructor
-  /// splits)
-  ty_splits: SSubst,
   /// The top-level parameters to the goal
   pub params: Vec<String>,
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
-  /// Stores the expression each guard variable maps to. Since we only need
-  /// these for proof emission, we just store the expression as a String.
+  /// Stores the expression each guard variable maps to
   guard_exprs: HashMap<String, Expr>,
   // TODO: It almost feels like we could use an e-graph to track these past
   // instantiations, but we can't use the main e-graph because there's other stuff
@@ -613,7 +609,6 @@ impl<'a> Goal<'a> {
       reductions,
       lemmas: HashMap::new(),
       local_context: Context::new(),
-      ty_splits: HashMap::new(),
       params: params.iter().map(|(p, _)| p.to_string()).collect(),
       guard_exprs: HashMap::new(),
       scrutinees: VecDeque::new(),
@@ -650,7 +645,6 @@ impl<'a> Goal<'a> {
       reductions: self.reductions,
       lemmas: HashMap::new(), // the lemmas will be re-generated immediately anyway
       local_context: self.local_context.clone(),
-      ty_splits: self.ty_splits.clone(),
       params: self.params.clone(),
       guard_exprs: self.guard_exprs.clone(),
       scrutinees: self.scrutinees.clone(),
@@ -822,10 +816,6 @@ impl<'a> Goal<'a> {
         if !added_lemma {
           warn!("cannot create a lemma from {} and {}", lhs, rhs);
         }
-        // else {
-        //   println!("Lemma has premises:");
-        //   self.premises.iter().for_each(|p| println!("{}", p));
-        // }
       }
     }
     rewrites
@@ -1012,10 +1002,6 @@ impl<'a> Goal<'a> {
           .join(" ")
       );
       let con_app_sexp = parser::parse_str(&con_app_string).unwrap();
-      // This is a split we need to track
-      new_goal
-        .ty_splits
-        .insert(var_str.clone(), con_app_sexp.clone());
       // We also need to add this split to the prev_var_instantiations
       add_con_app_to_prev_instantiations(
         &mut new_goal.prev_var_instantiations,
