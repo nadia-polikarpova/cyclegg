@@ -29,8 +29,6 @@ pub struct SmallerVar {
   /// A substitution from free variables
   /// to the original e-classes these variables came from
   pub initial_subst: Subst,
-  /// TODO: remove this
-  pub ty_splits: SSubst,
   /// All premises that must hold for this lemma to apply,
   /// expressed in terms of the free variables variables
   pub premises: Vec<Equation>,
@@ -815,8 +813,6 @@ impl<'a> Goal<'a> {
           // create initial subst by looking up the scrutinees in the egraph
           initial_subst: lookup_vars(&self.egraph, vars.iter()),
           free_vars: vars,
-          // TODO: Can we take a reference instead of cloning?
-          ty_splits: self.ty_splits.clone(),
           premises: self.premises.clone(),
         };
         let mut added_lemma = false;
@@ -1040,13 +1036,6 @@ impl<'a> Goal<'a> {
       new_goal
         .ty_splits
         .insert(var_str.clone(), con_app_sexp.clone());
-      // also in all of the conditions in the lemmas (there is probably a better
-      // way to do this...)
-      for (_, (_, _, smaller_var)) in new_goal.lemmas.iter_mut() {
-        smaller_var
-          .ty_splits
-          .insert(var_str.clone(), con_app_sexp.clone());
-      }
       // We also need to add this split to the prev_var_instantiations
       add_con_app_to_prev_instantiations(
         &mut new_goal.prev_var_instantiations,
