@@ -111,7 +111,8 @@ impl SmallerVar {
         return lhs_id == rhs_id;
       }
     }
-    // TODO: this should be a panic because we should have added all premises during grounding
+    // This should not happen in uncyclic mode, because we have grounded all the premises,
+    // but it can happen in cyclic mode because we don't ground the premises
     // panic!("premise {} = {} not found in egraph", lhs, rhs);
     false
   }
@@ -869,28 +870,22 @@ impl<'a> Goal<'a> {
   /// add a fresh scrutinee to its eclass, so that we can match on it.
   fn split_ite(&mut self) {
     let guard_var = "?g".parse().unwrap();
-    let constants = vec![Symbol::from(&*TRUE), Symbol::from(&*FALSE)];
-    // Iterator over all reducible symbols (i.e. Boolean constants and scrutinees)
-    let reducible = self.scrutinees.iter().chain(constants.iter());
     // Pattern "(ite ?g ?x ?y)"
     let searcher: Pattern<SymbolLang> = format!("({} {} ?x ?y)", *ITE, guard_var).parse().unwrap();
     let matches = searcher.search(&self.egraph);
-    // Collects class IDs of all irreducible guards;
+    // Collects class IDs of all stuck guards;
     // it's a map because the same guard can match more than once, but we only want to add a new scrutinee once
-    let mut irreducible_guards = HashMap::new();
+    let mut stuck_guards = HashMap::new();
     for m in matches {
       for subst in m.substs {
         let guard_id = *subst.get(guard_var).unwrap();
-        // Root symbols of all enodes in guard_id's eclass
-        let symbols: Vec<Symbol> = self.egraph[guard_id].nodes.iter().map(|n| n.op).collect();
-        // This guard is irreducible if symbols are disjoint from reducible
-        if !reducible.clone().any(|s| symbols.contains(s)) {
-          irreducible_guards.insert(guard_id, subst);
+        if let CanonicalForm::Stuck = self.egraph[guard_id].data {
+          stuck_guards.insert(guard_id, subst);
         }
       }
     }
-    // Iterate over all irreducible guard eclasses and add a new scrutinee to each
-    for (guard_id, subst) in irreducible_guards {
+    // Iterate over all stuck guard eclasses and add a new scrutinee to each
+    for (guard_id, subst) in stuck_guards {
       let fresh_var = Symbol::from(format!("{}{}", GUARD_PREFIX, guard_id));
       // This is here only for logging purposes
       let expr = Extractor::new(&self.egraph, AstSize).find_best(guard_id).1;
