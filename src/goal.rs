@@ -36,7 +36,7 @@ pub struct SmallerVar {
 
 impl SmallerVar {
   /// Substitution as a string, for debugging purposes
-  fn pretty_subst(subst: &Vec<(Symbol, Expr, Expr)>) -> String {
+  fn _pretty_subst(subst: &Vec<(Symbol, Expr, Expr)>) -> String {
     let strings: Vec<String> = subst
       .iter()
       .map(|(x, orig, new)| {
@@ -72,11 +72,7 @@ impl SmallerVar {
 
   /// Apply subst to self.premise (if any)
   /// and check whether the resulting terms are equal in the egraph
-  fn check_premise(
-    premise: &Equation,
-    triples: &Vec<(Symbol, Expr, Expr)>,
-    egraph: &mut Eg,
-  ) -> bool {
+  fn check_premise(premise: &Equation, triples: &Vec<(Symbol, Expr, Expr)>, egraph: &Eg) -> bool {
     // let info = SmallerVar::pretty_subst(triples);
     // println!("checking premise {} = {} for {}", premise.lhs.sexp, premise.rhs.sexp, info);
 
@@ -111,14 +107,14 @@ impl SmallerVar {
         return lhs_id == rhs_id;
       }
     }
-    // This should not happen in uncyclic mode, because we have grounded all the premises,
-    // but it can happen in cyclic mode because we don't ground the premises
-    // panic!("premise {} = {} not found in egraph", lhs, rhs);
+    // This cannot happen in uncyclic mode, because we have grounded all the premises,
+    // but it can happen in cyclic mode
+    // panic!("premise {:?} = {:?} not found in egraph", lhs, rhs);
     false
   }
 
   /// Check all of the premises of this condition
-  fn check_premises(&self, triples: &Vec<(Symbol, Expr, Expr)>, egraph: &mut Eg) -> bool {
+  fn check_premises(&self, triples: &Vec<(Symbol, Expr, Expr)>, egraph: &Eg) -> bool {
     self
       .premises
       .iter()
@@ -126,9 +122,9 @@ impl SmallerVar {
   }
 }
 
-impl Condition<SymbolLang, CanonicalFormAnalysis> for SmallerVar {
+impl SearchCondition<SymbolLang, CanonicalFormAnalysis> for SmallerVar {
   /// Returns true if the substitution is into a smaller tuple of variables
-  fn check(&self, egraph: &mut Eg, _eclass: Id, subst: &Subst) -> bool {
+  fn check(&self, egraph: &Eg, _eclass: Id, subst: &Subst) -> bool {
     // Create an iterator over triples: (variable, old canonical form, new canonical form)
     let triples = self
       .free_vars
@@ -320,166 +316,6 @@ impl Analysis<SymbolLang> for CanonicalFormAnalysis {
   }
 }
 
-/// When we do a case split we will instantiate a variable x to
-/// (Cons fresh_var1 fresh_var2 ...). We need to update our prev_instantiations
-/// to account for this equality. We will copy each past instantiation and add
-/// a new instantiation where instead of assigning x to itself, we will assign it
-/// to the sexp. We'll also add assignments of the vars in the constructor to
-/// themselves.
-fn add_con_app_to_prev_instantiations<I>(
-  prev_instantiations: &mut Vec<SSubst>,
-  var: &String,
-  con_app_sexp: &Sexp,
-  app_vars: I,
-) where
-  I: IntoIterator<Item = String> + Clone,
-{
-  // These instantiations are equivalent but we need to track them so that
-  // we can discover all possible new instantiations when we add a variable.
-  let equal_instantiations: Vec<SSubst> = prev_instantiations
-    .iter()
-    .flat_map(|instantiation| {
-      // If the var isn't in the instantiation, then we don't need to make a
-      // new instantiation for it because assigning it in that instantiation
-      // would be meaningless.
-      if instantiation.contains_key(var) {
-        let mut new_instantiation = instantiation.clone();
-        new_instantiation.insert(var.clone(), con_app_sexp.clone());
-        for app_var in app_vars.clone() {
-          new_instantiation.insert(app_var.clone(), Sexp::String(app_var.clone()));
-        }
-        Some(new_instantiation)
-      } else {
-        None
-      }
-    })
-    .collect();
-  prev_instantiations.extend(equal_instantiations);
-}
-
-/// For simplicity of implementation, an instantiation will look like
-/// {x: (S x'), x': Z}
-/// instead of the simpler
-/// {x: (S Z)}
-/// This function will traverse the instantiation and make substitutions
-/// where appropriate.
-fn resolve_instantiation(instantiation: &SSubst) -> SSubst {
-  let mut resolved_instantiation = HashMap::new();
-  for var in instantiation.keys() {
-    resolve_var_instantiation(instantiation, &mut resolved_instantiation, var);
-  }
-  resolved_instantiation
-}
-
-fn resolve_var_instantiation(
-  instantiation: &SSubst,
-  resolved_instantiation: &mut SSubst,
-  var: &String,
-) {
-  match instantiation.get(var) {
-    // This shouldn't happen...
-    Some(Sexp::Empty) => unreachable!("Empty instantiation for variable {}", var),
-    Some(Sexp::String(descendent)) => {
-      if descendent != var {
-        resolve_var_instantiation(instantiation, resolved_instantiation, descendent);
-        match resolved_instantiation.get(descendent) {
-          // The descendent doesn't resolve to anything (is a leaf)
-          None => {
-            resolved_instantiation.insert(var.clone(), Sexp::String(descendent.clone()));
-          }
-          // The descendent resolves to something
-          Some(sexp) => {
-            resolved_instantiation.insert(var.clone(), sexp.clone());
-          }
-        };
-      }
-    }
-    Some(constructor_sexp @ Sexp::List(sexps)) => {
-      let mut sexp_iter = sexps.iter();
-      // The list should have at least one element in it
-      let constructor = sexp_iter.next().unwrap();
-      // This might be empty
-      let mut new_sexps: Vec<Sexp> = sexp_iter
-        .map(|sexp| {
-          if let Sexp::String(sexp_var) = sexp {
-            if !resolved_instantiation.contains_key(sexp_var) {
-              resolve_var_instantiation(instantiation, resolved_instantiation, sexp_var);
-            }
-            resolved_instantiation.get(sexp_var).unwrap_or(sexp).clone()
-          } else {
-            unreachable!(
-              "Constructor with argument that isn't a variable: {}",
-              constructor_sexp
-            )
-          }
-        })
-        .collect();
-      // Remake the sexp
-      new_sexps.insert(0, constructor.clone());
-      resolved_instantiation.insert(var.clone(), Sexp::List(new_sexps));
-    }
-    None => (),
-  }
-}
-
-/// When we find a new variable that is a descendent of some others, we will
-/// discover new instantiations of the LHS and RHS that we can unify using this
-/// variable.
-fn instantiate_new_ih_terms(
-  egraph: &mut Eg,
-  prev_instantiations: &mut Vec<SSubst>,
-  var: &String,
-  var_ancestors: &[String],
-  terms: &[&ETerm],
-  // params: &[String],
-) {
-  let new_instantiations: Vec<SSubst> = prev_instantiations
-    .iter()
-    .flat_map(|instantiation| {
-      // TODO: do we need to take the powerset of the ancestors here? I don't
-      // think so precisely because they are ancestors instead of being unrelated.
-      // There should be some past instantiation which resolves all ancestors to
-      // themselves and some past instantiation which resolves all ancestors to
-      // the closest ancestor to var (so if we instantiate it to var, all
-      // ancestors get instantiated to var).
-      var_ancestors.iter().flat_map(|ancestor| {
-        // There are possibly many instantiations that refer to the ancestor. If
-        // we replaced the ancestor with its descendent var in all of them, then
-        // we would duplicate a bunch of instantiations.
-        //
-        // Consider for example the case where we start with the instantiation
-        // [{x: x}, {x: S x', x': x'}, {x: Z}]
-        // and we want to instantiate x to y for some reason.
-        // Without this restriction we would get
-        // [{x: y}, {x: y, x': x'}, {x: y}]
-        // We really just want to get
-        // [{x: y}]
-        // once
-        if ancestor != var
-          && instantiation.contains_key(ancestor)
-          && instantiation[ancestor] == Sexp::String(ancestor.to_string())
-        {
-          let mut new_instantiation = instantiation.clone();
-          new_instantiation.insert(ancestor.clone(), Sexp::String(var.clone()));
-          Some(new_instantiation)
-        } else {
-          None
-        }
-      })
-    })
-    .collect();
-  for new_instantiation in new_instantiations.iter() {
-    let resolved_instantiation = resolve_instantiation(new_instantiation);
-    // println!("new instantiation for {} : {:?}", var, resolved_instantiation);
-    for term in terms.iter() {
-      let new_term = recursively_resolve_sexp(&term.sexp, &resolved_instantiation);
-      // println!("new term: {}", new_term);
-      ETerm::new(&new_term, egraph);
-    }
-  }
-  prev_instantiations.extend(new_instantiations);
-}
-
 /// A term inside the egraph;
 /// we store multiple representations because they are useful for different purposes.
 #[derive(Debug, Clone)]
@@ -503,6 +339,17 @@ impl ETerm {
       sexp: sexp.clone(),
       id,
       expr,
+    }
+  }
+
+  fn new_from_expr(expr: &Expr, egraph: &mut Eg) -> ETerm {
+    let sexp = parser::parse_str(&expr.to_string()).unwrap();
+    egraph.add_expr(expr);
+    let id = egraph.lookup_expr(expr).unwrap();
+    Self {
+      sexp,
+      id,
+      expr: expr.clone(),
     }
   }
 
@@ -561,15 +408,16 @@ pub struct Goal<'a> {
   /// Universally-quantified variables of the goal
   /// (i.e. top-level parameters and binders derived from them through pattern matching)
   pub local_context: Context,
+  /// The top-level parameters to the goal
+  pub params: Vec<Symbol>,
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
   /// Stores the expression each guard variable maps to
   guard_exprs: HashMap<String, Expr>,
-  // TODO: It almost feels like we could use an e-graph to track these past
-  // instantiations, but we can't use the main e-graph because there's other stuff
-  // that gets put into it.
-  prev_var_instantiations: Vec<SSubst>,
+  /// Instantiations of the induction hypothesis that are in the egraph
+  /// (stored as a mapping from the equation parameters to e-classes)
+  grounding_instantiations: Vec<Subst>,
   /// The equation we are trying to prove
   pub eq: Equation,
   /// If this is a conditional prop, the premises
@@ -602,23 +450,16 @@ impl<'a> Goal<'a> {
 
     let mut res = Self {
       name: name.to_string(),
+      // The only instantiation we have so far is where the parameters map to themselves
+      grounding_instantiations: vec![lookup_vars(&egraph, params.iter().map(|(x, _)| x))],
       egraph,
       explanation: None,
       reductions,
       lemmas: HashMap::new(),
       local_context: Context::new(),
+      params: params.iter().map(|(x, _)| x.clone()).collect(),
       guard_exprs: HashMap::new(),
       scrutinees: VecDeque::new(),
-      // The only instantiation we've considered thus far is where every param maps to itself.
-      // We won't unify the LHS and RHS under this instantiation, though, because that would
-      // immediately (and falsely) prove the theorem.
-      prev_var_instantiations: [params
-        .iter()
-        .map(|(param_symb, _param_type)| {
-          (param_symb.to_string(), Sexp::String(param_symb.to_string()))
-        })
-        .collect::<SSubst>()]
-      .into(),
       eq,
       // Convert to a singleton list if the Option is Some, else the empty list
       premises: premise.into_iter().collect(),
@@ -642,9 +483,10 @@ impl<'a> Goal<'a> {
       reductions: self.reductions,
       lemmas: HashMap::new(), // the lemmas will be re-generated immediately anyway
       local_context: self.local_context.clone(),
+      params: self.params.clone(),
       guard_exprs: self.guard_exprs.clone(),
       scrutinees: self.scrutinees.clone(),
-      prev_var_instantiations: self.prev_var_instantiations.clone(),
+      grounding_instantiations: self.grounding_instantiations.clone(),
       eq: self.eq.clone(),
       premises: self.premises.clone(),
       env: self.env,
@@ -717,11 +559,7 @@ impl<'a> Goal<'a> {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
-  fn add_lemma_rewrites(
-    &mut self,
-    state: &ProofState,
-    is_cyclic: bool,
-  ) -> HashMap<String, Rw> {
+  fn add_lemma_rewrites(&mut self, state: &ProofState, is_cyclic: bool) -> HashMap<String, Rw> {
     let lhs_id = self.egraph.find(self.eq.lhs.id);
     let rhs_id = self.egraph.find(self.eq.rhs.id);
     let is_var = |v| self.local_context.contains_key(v);
@@ -818,19 +656,22 @@ impl<'a> Goal<'a> {
   }
 
   /// Add a rewrite `lhs => rhs` to `rewrites` if not already present
-  fn add_lemma(
-    lhs: Pat,
-    rhs: Pat,
-    cond: SmallerVar,
-    rewrites: &mut HashMap<String, Rw>,
-  ) {
+  fn add_lemma(lhs: Pat, rhs: Pat, cond: SmallerVar, rewrites: &mut HashMap<String, Rw>) {
     let name = format!("{}{}={}", LEMMA_PREFIX, lhs, rhs);
     // Insert the lemma into the rewrites map if it's not already there
     match rewrites.entry(name.clone()) {
       Entry::Occupied(_) => (),
       Entry::Vacant(entry) => {
         warn!("creating lemma: {} => {}", lhs, rhs);
-        let rw = Rewrite::new(name, lhs, ConditionalApplier {condition: cond, applier: rhs}).unwrap();
+        let rw = Rewrite::new(
+          name,
+          ConditionalSearcher {
+            condition: cond,
+            searcher: lhs,
+          },
+          rhs,
+        )
+        .unwrap();
         entry.insert(rw);
       }
     }
@@ -941,50 +782,11 @@ impl<'a> Goal<'a> {
         new_goal.local_context.insert(fresh_var, arg_type.clone());
         new_goal.add_scrutinee(fresh_var, arg_type, depth);
 
-        if !is_cyclic {
-          // Find all vars that this variable descends from.
-          //
-          // TODO: this can be pulled out of both for loops. It will require
-          // some logic to add another variable (the parent).
-          let ancestors: Vec<String> = self
-            .local_context
-            .iter()
-            .flat_map(|(ancestor_var, ancestor_type)| {
-              if ancestor_type == arg_type && is_descendant(&fresh_var_name, ancestor_var.as_str())
-              {
-                Some(ancestor_var.to_string())
-              } else {
-                None
-              }
-            })
-            .collect();
-
-          // Take both sides of the equality and the premise (if there is one)
-          let mut sides = vec![&new_goal.eq.lhs, &new_goal.eq.rhs];
-          for premise in new_goal.premises.iter() {
-            sides.push(&premise.lhs);
-            sides.push(&premise.rhs);
-          }
-          // Instantiate all sides with the new substitution
-          instantiate_new_ih_terms(
-            &mut new_goal.egraph,
-            &mut new_goal.prev_var_instantiations,
-            &fresh_var_name,
-            &ancestors,
-            sides.as_slice(),
-          );
+        if !is_cyclic && ty == arg_type {
+          // This is a recursive constructor parameter:
+          // add new grounding instantiations replacing var with fresh_var
+          new_goal.add_grounding(var, fresh_var);
         }
-        // NOTE If we are adding a new variable with the same type as its parent,
-        // then we might be losing information about it.
-        //
-        // For example, if we case split x = S x', we simply add x' to the
-        // e-graph with no new information about it. But all equalities
-        // involving x are also true of x' because it is smaller than x.
-        //
-        // We resolve this when mk_lemmas is false by calling out to
-        // instantiate_new_ih_euqalities (the idea being that all facts about x
-        // are derived from its presence in the IH), but if we had a faster way
-        // of copying the facts about x to x' that could make things easier.
       }
 
       // Create an application of the constructor to the fresh vars
@@ -996,14 +798,6 @@ impl<'a> Goal<'a> {
           .clone()
           .collect::<Vec<String>>()
           .join(" ")
-      );
-      let con_app_sexp = parser::parse_str(&con_app_string).unwrap();
-      // We also need to add this split to the prev_var_instantiations
-      add_con_app_to_prev_instantiations(
-        &mut new_goal.prev_var_instantiations,
-        &var_str,
-        &con_app_sexp,
-        fresh_var_strings_iter,
       );
       let con_app: Expr = con_app_string.parse().unwrap();
 
@@ -1026,34 +820,7 @@ impl<'a> Goal<'a> {
       // Remove old variable from the egraph and context
       remove_node(&mut new_goal.egraph, &SymbolLang::leaf(var));
       // warn!("removing var {}", var);
-      // FIXME: is this OK? add a full_context?
-      // new_goal.local_context.remove(&var);
       new_goal.egraph.rebuild();
-
-      new_goal.premises = self
-        .premises
-        .iter()
-        .map(|premise| {
-          let var_instantiation = HashMap::from([(var_str.clone(), con_app_sexp.clone())]);
-          let new_lhs_sexp = resolve_sexp(&premise.lhs.sexp, &var_instantiation);
-          let new_rhs_sexp = resolve_sexp(&premise.rhs.sexp, &var_instantiation);
-          let new_lhs = ETerm::new(&new_lhs_sexp, &mut new_goal.egraph);
-          let new_rhs = ETerm::new(&new_rhs_sexp, &mut new_goal.egraph);
-          let old_ids = (
-            new_goal.egraph.find(premise.lhs.id),
-            new_goal.egraph.find(premise.rhs.id),
-          );
-          // This is simply instantiating a variable to something it has been
-          // unioned with, so these ids should be unchanged.
-          //
-          // This can be solved in the future by canonicalization.
-          assert_eq!(old_ids, (new_lhs.id, new_rhs.id));
-          Equation {
-            lhs: new_lhs,
-            rhs: new_rhs,
-          }
-        })
-        .collect();
 
       // TODO: should this be only done when mk_lemmas is false?
       if var_str.starts_with(GUARD_PREFIX) {
@@ -1112,14 +879,67 @@ impl<'a> Goal<'a> {
   fn instantiate_constructor(con_ty: &Type, actual: &Type) -> Vec<Type> {
     let (args, ret) = con_ty.args_ret();
     let instantiations = find_instantiations(&ret, actual);
-    // println!("args: {:?}, ret: {}, actual: {:?}", args, ret, actual);
-    // println!("instantiations: {:?}", instantiations);
     let ret = args
       .iter()
       .map(|arg| Type::new(resolve_sexp(&arg.repr, &instantiations)))
       .collect();
-    // println!("new types: {:?}", ret);
     ret
+  }
+
+  /// Add new grounding instantiations
+  /// that replace parent with child in previous instantiations
+  fn add_grounding(&mut self, parent: Symbol, child: Symbol) {
+    // First gather all the terms we want to instantiate:
+    // take both sides of the equation and all the premises
+    let mut sides = vec![&self.eq.lhs, &self.eq.rhs];
+    for premise in self.premises.iter() {
+      sides.push(&premise.lhs);
+      sides.push(&premise.rhs);
+    }
+
+    // Now create new instantiations from existing ones
+    let mut new_instantiations = vec![];
+    for inst in self.grounding_instantiations.iter() {
+      let replaced_canonicals: Vec<(Symbol, ETerm, bool)> = self
+        .params
+        .iter()
+        .map(|x| {
+          // Which class was this param instantiated to?
+          let id = inst.get(to_wildcard(x)).unwrap();
+          // Parameters must be canonical (at least in a clean state)
+          let canonical = CanonicalFormAnalysis::extract_canonical(&self.egraph, *id).unwrap();
+          // Try replacing the case-split variable with its child
+          let (new_expr, replaced) = replace_var(&canonical, parent, child);
+          let eterm = if replaced {
+            ETerm::new_from_expr(&new_expr, &mut self.egraph)
+          } else {
+            ETerm::from_expr(new_expr, &self.egraph)
+          };
+          (x.clone(), eterm, replaced)
+        })
+        .collect();
+      // If any of the canonical forms had a replacement, add a new instantiation:
+      if replaced_canonicals.iter().any(|(_, _, b)| *b) {
+        let new_instantiation = replaced_canonicals
+          .iter()
+          .map(|(x, e, _)| (x.to_string(), e.sexp.clone()))
+          .collect();
+        // For each new instantiation, instantiate all the sides and add them to the egraph
+        for term in sides.iter() {
+          let new_term = resolve_sexp(&term.sexp, &new_instantiation);
+          ETerm::new(&new_term, &mut self.egraph);
+        }
+        // Add the new instantiation to the list of grounding instantiations
+        let mut new_subst = Subst::with_capacity(new_instantiation.len());
+        for (x, e, _) in replaced_canonicals {
+          new_subst.insert(to_wildcard(&x), e.id);
+        }
+        new_instantiations.push(new_subst);
+      }
+    }
+
+    // Add the new instantiations to the list of grounding instantiations
+    self.grounding_instantiations.extend(new_instantiations);
   }
 }
 

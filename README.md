@@ -26,6 +26,9 @@ cargo run -- examples/add.ceg
 - Canonical forms for termination checking:
     - For grounding: at every split, replace the var being split with the smaller var in all prev_instantiations
         (store prev_instantiations in terms of eclasses so that we can get their canonical forms)
+    - In cyclic mode: when a lemma is created, its premises can contain variables from all previous scrutinees,
+      because they were picked up along the way; 
+      so they all need to be canonicalized *before* checking if the premise has extra variables
 - Blocking variables analysis
 
 #### Proofs

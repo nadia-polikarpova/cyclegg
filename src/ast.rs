@@ -153,6 +153,22 @@ pub fn is_subterm(sub: &Expr, sup: &Expr) -> StructuralComparison {
   }
 }
 
+/// Replace one variable with another in a RecExpr;
+/// also returns whether the variable was found
+pub fn replace_var(expr: &Expr, var: Symbol, replacement: Symbol) -> (Expr, bool) {
+  let mut new_expr = vec![];
+  let mut found = false;
+  for node in expr.as_ref() {
+    if node.op == var {
+      new_expr.push(SymbolLang::leaf(replacement));
+      found = true;
+    } else {
+      new_expr.push(node.clone());
+    }
+  }
+  (new_expr.into(), found)
+}
+
 pub fn map_sexp<F>(f: F, sexp: &Sexp) -> Sexp
 where
   F: Copy + Fn(&str) -> Sexp,
