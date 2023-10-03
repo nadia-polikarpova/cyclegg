@@ -559,10 +559,11 @@ impl<'a> Goal<'a> {
   /// Create a rewrite `lhs => rhs` which will serve as the lemma ("induction hypothesis") for a cycle in the proof;
   /// here lhs and rhs are patterns, created by replacing all scrutinees with wildcards;
   /// soundness requires that the pattern only apply to variable tuples smaller than the current scrutinee tuple.
-  fn add_lemma_rewrites(&mut self, state: &ProofState, is_cyclic: bool) -> HashMap<String, Rw> {
+  fn add_lemma_rewrites(&mut self, state: &ProofState) -> HashMap<String, Rw> {
     let lhs_id = self.egraph.find(self.eq.lhs.id);
     let rhs_id = self.egraph.find(self.eq.rhs.id);
     let is_var = |v| self.local_context.contains_key(v);
+    let is_cyclic = CONFIG.is_cyclic();
 
     let exprs = if is_cyclic {
       // If we are doing cyclic proofs: make lemmas out of all LHS and RHS variants
@@ -740,8 +741,8 @@ impl<'a> Goal<'a> {
   }
 
   /// Consume this goal and add its case splits to the proof state
-  fn case_split(mut self, state: &mut ProofState<'a>, is_cyclic: bool) {
-    let new_lemmas = self.add_lemma_rewrites(state, is_cyclic);
+  fn case_split(mut self, state: &mut ProofState<'a>) {
+    let new_lemmas = self.add_lemma_rewrites(state);
 
     // Get the next variable to case-split on
     let var = self.scrutinees.pop_front().unwrap();
@@ -782,7 +783,7 @@ impl<'a> Goal<'a> {
         new_goal.local_context.insert(fresh_var, arg_type.clone());
         new_goal.add_scrutinee(fresh_var, arg_type, depth);
 
-        if !is_cyclic && ty == arg_type {
+        if !CONFIG.is_cyclic() && ty == arg_type {
           // This is a recursive constructor parameter:
           // add new grounding instantiations replacing var with fresh_var
           new_goal.add_grounding(var, fresh_var);
@@ -1088,7 +1089,7 @@ pub fn explain_goal_failure(goal: &Goal) {
 }
 
 /// Top-level interface to the theorem prover.
-pub fn prove(mut goal: Goal, is_cyclic: bool) -> (Outcome, ProofState) {
+pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
   let mut state = ProofState {
     goals: vec![goal],
     solved_goal_explanation_and_context: HashMap::default(),
@@ -1147,7 +1148,7 @@ pub fn prove(mut goal: Goal, is_cyclic: bool) -> (Outcome, ProofState) {
       }
       return (Outcome::Unknown, state);
     }
-    goal.case_split(&mut state, is_cyclic);
+    goal.case_split(&mut state);
     if CONFIG.verbose {
       println!("{}", "Case splitting and continuing...".purple());
     }

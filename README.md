@@ -11,7 +11,6 @@ cargo run -- examples/add.ceg
 
 #### Organizational
 - Add flag for grounding
-- Add flag for each proof mode (cyclic, non-cyclic, both)
 - Create goals inside parser, do not expose RawGoal
 - Decouple proof generation from proof search (e.g. put Defs, Proof term somewhere else)
 - Make partial applications without $ work
@@ -24,11 +23,10 @@ cargo run -- examples/add.ceg
 
 #### Search
 - Canonical forms for termination checking:
-    - For grounding: at every split, replace the var being split with the smaller var in all prev_instantiations
-        (store prev_instantiations in terms of eclasses so that we can get their canonical forms)
     - In cyclic mode: when a lemma is created, its premises can contain variables from all previous scrutinees,
       because they were picked up along the way; 
       so they all need to be canonicalized *before* checking if the premise has extra variables
+- In cyclic mode: use multi-patterns instead of requiring that the premise has no extra vars?      
 - Blocking variables analysis
 
 #### Proofs
