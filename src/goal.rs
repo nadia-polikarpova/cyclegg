@@ -620,6 +620,9 @@ impl<'a> Goal<'a> {
       exprs
     };
 
+    // Before creating a cyclic lemma with premises,
+    // we need to update the variables in the premises 
+    // with their canonical forms in terms of the current goal variables
     let premises: Vec<Equation> = self
       .premises
       .iter()
@@ -658,8 +661,7 @@ impl<'a> Goal<'a> {
           continue;
         }
 
-        // Pick out those scrutinees that occur in the lemma;
-        // this is not strictly necessary, but we'd like to get rid of junk like BOUND_EXCEEDED
+        // Pick out those variables that occur in the lemma
         let lemma_var_classes: IdSubst = self
           .var_classes
           .iter()
@@ -668,7 +670,6 @@ impl<'a> Goal<'a> {
           .collect();
 
         let condition = Soundness {
-          // create initial subst by looking up the scrutinees in the egraph
           free_vars: lemma_var_classes,
           premises: premises.clone(),
         };
