@@ -21,18 +21,18 @@ const BOUND_EXCEEDED: &str = "__";
 pub const LEMMA_PREFIX: &str = "lemma-";
 pub const IH_EQUALITY_PREFIX: &str = "ih-equality-"; // TODO: remove
 
-/// Condition that checks whether the substitution is into a smaller tuple of variable
+/// Condition that checks whether it is sound to apply a lemma
 #[derive(Clone)]
-pub struct SmallerVar {
+pub struct Soundness {
   /// A substitution from lemma's free variables
   /// to the original e-classes these variables came from
   pub free_vars: IdSubst,
   /// All premises that must hold for this lemma to apply,
-  /// expressed in terms of the free variables variables
+  /// expressed in terms of the free variables
   pub premises: Vec<Equation>,
 }
 
-impl SmallerVar {
+impl Soundness {
   /// Substitution as a string, for debugging purposes
   fn _pretty_subst(subst: &Vec<(Symbol, Expr, Expr)>) -> String {
     let strings: Vec<String> = subst
@@ -116,11 +116,11 @@ impl SmallerVar {
     self
       .premises
       .iter()
-      .all(|premise| SmallerVar::check_premise(premise, triples, egraph))
+      .all(|premise| Soundness::check_premise(premise, triples, egraph))
   }
 }
 
-impl SearchCondition<SymbolLang, CanonicalFormAnalysis> for SmallerVar {
+impl SearchCondition<SymbolLang, CanonicalFormAnalysis> for Soundness {
   /// Returns true if the substitution is into a smaller tuple of variables
   fn check(&self, egraph: &Eg, _eclass: Id, subst: &Subst) -> bool {
     // Create an iterator over triples: (variable, old canonical form, new canonical form)
@@ -667,7 +667,7 @@ impl<'a> Goal<'a> {
           .map(|(x, id)| (x.clone(), *id))
           .collect();
 
-        let condition = SmallerVar {
+        let condition = Soundness {
           // create initial subst by looking up the scrutinees in the egraph
           free_vars: lemma_var_classes,
           premises: premises.clone(),
@@ -700,7 +700,7 @@ impl<'a> Goal<'a> {
   }
 
   /// Add a rewrite `lhs => rhs` to `rewrites` if not already present
-  fn add_lemma(lhs: Pat, rhs: Pat, cond: SmallerVar, rewrites: &mut HashMap<String, Rw>) {
+  fn add_lemma(lhs: Pat, rhs: Pat, cond: Soundness, rewrites: &mut HashMap<String, Rw>) {
     let name = format!("{}{}={}", LEMMA_PREFIX, lhs, rhs);
     // Insert the lemma into the rewrites map if it's not already there
     match rewrites.entry(name.clone()) {
