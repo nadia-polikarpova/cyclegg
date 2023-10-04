@@ -23,7 +23,7 @@ cargo run -- examples/add.ceg
 
 #### Search
 - Canonical forms for termination checking:
-    - Grounding for cyclic mode (store grounding_instantiations per lemma)
+    - Grounding for cyclic mode: extend the domain of grounding_instantiations to include new vars; instantiate sides of all lemmas
 - In cyclic mode: use multi-patterns instead of requiring that the premise has no extra vars?      
 - Blocking variables analysis
 
