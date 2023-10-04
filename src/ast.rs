@@ -1,12 +1,15 @@
 use egg::*;
 use lazy_static::lazy_static;
 
+use indexmap::IndexMap;
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 use symbolic_expressions::{Sexp, SexpError};
 
 use crate::config::CONFIG;
 
 pub type SSubst = HashMap<String, Sexp>;
+// This is almost like egg's Subst but iterable
+pub type IdSubst = IndexMap<Symbol, Id>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
@@ -320,11 +323,11 @@ where
 pub fn lookup_vars<'a, I: Iterator<Item = &'a Symbol>, A: Analysis<SymbolLang>>(
   egraph: &EGraph<SymbolLang, A>,
   vars: I,
-) -> Subst {
-  let mut subst = Subst::default();
+) -> IdSubst {
+  let mut subst = IndexMap::new();
   for var in vars {
     match egraph.lookup(SymbolLang::leaf(*var)) {
-      Some(id) => subst.insert(to_wildcard(var), id),
+      Some(id) => subst.insert(var.clone(), id),
       None => panic!("lookup_vars: variable {} not found in egraph", var),
     };
   }

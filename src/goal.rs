@@ -24,11 +24,9 @@ pub const IH_EQUALITY_PREFIX: &str = "ih-equality-"; // TODO: remove
 /// Condition that checks whether the substitution is into a smaller tuple of variable
 #[derive(Clone)]
 pub struct SmallerVar {
-  /// Lemma's free variables
-  pub free_vars: Vec<Symbol>,
-  /// A substitution from free variables
+  /// A substitution from lemma's free variables
   /// to the original e-classes these variables came from
-  pub initial_subst: Subst,
+  pub free_vars: IdSubst,
   /// All premises that must hold for this lemma to apply,
   /// expressed in terms of the free variables variables
   pub premises: Vec<Equation>,
@@ -129,12 +127,11 @@ impl SearchCondition<SymbolLang, CanonicalFormAnalysis> for SmallerVar {
     let triples = self
       .free_vars
       .iter()
-      .map(|x| {
+      .map(|(x, orig_id)| {
         let v = to_wildcard(x);
         // Subst must have all lemma variables defined
         // because we did the filtering when creating SmallerVars
         let new_id = subst.get(v).unwrap();
-        let orig_id = self.initial_subst.get(v).unwrap();
         // If the actual argument of the lemma is not canonical, give up
         let new_canonical = CanonicalFormAnalysis::extract_canonical(egraph, *new_id)?;
         // Same for the original argument:
@@ -358,6 +355,27 @@ impl ETerm {
     let sexp = parser::parse_str(&expr.to_string()).unwrap();
     Self { sexp, id, expr }
   }
+
+  /// Update variables in my expressions with their canonical forms
+  fn update_variables(&self, subst: &IdSubst, egraph: &Eg) -> Self {
+    let ssubst: SSubst = subst
+      .iter()
+      .map(|(x, id)| {
+        let expr = CanonicalFormAnalysis::extract_canonical(egraph, *id).unwrap();
+        (
+          x.to_string(),
+          symbolic_expressions::parser::parse_str(&expr.to_string()).unwrap(),
+        )
+      })
+      .collect();
+    let new_sexp = resolve_sexp(&self.sexp, &ssubst);
+    let new_expr = new_sexp.to_string().parse().unwrap();
+    Self {
+      sexp: new_sexp,
+      id: egraph.lookup_expr(&new_expr).unwrap(),
+      expr: new_expr,
+    }
+  }
 }
 
 impl Display for ETerm {
@@ -393,6 +411,14 @@ impl Equation {
     }
     Self { lhs, rhs }
   }
+
+  /// Update variables in my expressions with their canonical forms
+  fn update_variables(&self, subst: &IdSubst, egraph: &Eg) -> Self {
+    Self {
+      lhs: self.lhs.update_variables(subst, egraph),
+      rhs: self.rhs.update_variables(subst, egraph),
+    }
+  }
 }
 
 /// Proof goal
@@ -401,23 +427,22 @@ pub struct Goal<'a> {
   pub name: String,
   /// Equivalences we already proved
   pub egraph: Eg,
-  pub explanation: Option<Explanation<SymbolLang>>,
   /// Rewrites are split into reductions (invertible rules) and lemmas (non-invertible rules)
   reductions: &'a Vec<Rw>,
   lemmas: HashMap<String, Rw>,
-  /// Universally-quantified variables of the goal
-  /// (i.e. top-level parameters and binders derived from them through pattern matching)
+  /// Mapping from all universally-quantified variables of the goal to their types
+  /// (note this includes both current and old variables, which have been case-split away)
   pub local_context: Context,
+  /// Mapping from all universally-quantified variables of the goal to the e-classes they are stored in
+  /// (note this includes both current and old variables, which have been case-split away)
+  pub var_classes: IdSubst,
   /// The top-level parameters to the goal
   pub params: Vec<Symbol>,
   /// Variables we can case-split
   /// (i.e. the subset of local_context that have datatype types)
   scrutinees: VecDeque<Symbol>,
-  /// Stores the expression each guard variable maps to
-  guard_exprs: HashMap<String, Expr>,
   /// Instantiations of the induction hypothesis that are in the egraph
-  /// (stored as a mapping from the equation parameters to e-classes)
-  grounding_instantiations: Vec<Subst>,
+  grounding_instantiations: Vec<IdSubst>,
   /// The equation we are trying to prove
   pub eq: Equation,
   /// If this is a conditional prop, the premises
@@ -426,8 +451,13 @@ pub struct Goal<'a> {
   pub env: &'a Env,
   /// Global context (i.e. constructors and top-level bindings)
   pub global_context: &'a Context,
+
+  /// If the goal is discharged, an explanation of the proof
+  pub explanation: Option<Explanation<SymbolLang>>,
   /// Definitions in a form amenable to proof emission
   pub defns: &'a Defns,
+  /// Stores the expression each guard variable maps to
+  guard_exprs: HashMap<String, Expr>,
 }
 
 impl<'a> Goal<'a> {
@@ -447,11 +477,13 @@ impl<'a> Goal<'a> {
     let premise = premise
       .as_ref()
       .map(|eq| Equation::new(eq, &mut egraph, true));
+    let var_classes = lookup_vars(&egraph, params.iter().map(|(x, _)| x));
 
     let mut res = Self {
       name: name.to_string(),
       // The only instantiation we have so far is where the parameters map to themselves
-      grounding_instantiations: vec![lookup_vars(&egraph, params.iter().map(|(x, _)| x))],
+      var_classes: var_classes.clone(),
+      grounding_instantiations: vec![var_classes],
       egraph,
       explanation: None,
       reductions,
@@ -478,13 +510,11 @@ impl<'a> Goal<'a> {
     Goal {
       name: self.name.clone(),
       egraph: self.egraph.clone(),
-      // If we reach this point, I think we won't have an explanation
-      explanation: None,
       reductions: self.reductions,
       lemmas: HashMap::new(), // the lemmas will be re-generated immediately anyway
       local_context: self.local_context.clone(),
+      var_classes: self.var_classes.clone(),
       params: self.params.clone(),
-      guard_exprs: self.guard_exprs.clone(),
       scrutinees: self.scrutinees.clone(),
       grounding_instantiations: self.grounding_instantiations.clone(),
       eq: self.eq.clone(),
@@ -493,6 +523,9 @@ impl<'a> Goal<'a> {
       global_context: self.global_context,
       // NOTE: We don't really need to clone this.
       defns: self.defns,
+      // If we reach this point, I think we won't have an explanation
+      explanation: None,
+      guard_exprs: self.guard_exprs.clone(),
     }
   }
 
@@ -569,18 +602,29 @@ impl<'a> Goal<'a> {
       // If we are doing cyclic proofs: make lemmas out of all LHS and RHS variants
       get_all_expressions(&self.egraph, vec![lhs_id, rhs_id])
     } else {
-      // Otherwise, only use the original LHS and RHS.
-      // NOTE: this will try to add the IH every time we case split,
-      // and on later iterations the termination check will be unsound
-      // because the IH contains variables that are not in scrutinees.
-      // But that's okay because we won't add the IH more than once.
-      vec![
-        (lhs_id, vec![self.eq.lhs.expr.clone()]),
-        (rhs_id, vec![self.eq.rhs.expr.clone()]),
-      ]
-      .into_iter()
-      .collect()
+      // In the non-cyclic case, only use the original LHS and RHS
+      // and only if no other lemmas have been added yet
+      let mut exprs: HashMap<Id, Vec<Expr>> = vec![(lhs_id, vec![]), (rhs_id, vec![])]
+        .into_iter()
+        .collect();
+      if self.lemmas.is_empty() {
+        exprs
+          .get_mut(&lhs_id)
+          .unwrap()
+          .push(self.eq.lhs.expr.clone());
+        exprs
+          .get_mut(&rhs_id)
+          .unwrap()
+          .push(self.eq.rhs.expr.clone());
+      }
+      exprs
     };
+
+    let premises: Vec<Equation> = self
+      .premises
+      .iter()
+      .map(|eq| eq.update_variables(&self.var_classes, &self.egraph))
+      .collect();
 
     let mut rewrites = self.lemmas.clone();
     for lhs_expr in exprs.get(&lhs_id).unwrap() {
@@ -604,7 +648,7 @@ impl<'a> Goal<'a> {
 
         // If any of my premises contain variables that are not present in lhs or rhs,
         // skip because we don't know how to check such a premise
-        if !self.premises.iter().all(|eq| {
+        if !premises.iter().all(|eq| {
           let premise_lhs_vars = var_set(&to_pattern(&eq.lhs.expr, is_var));
           let premise_rhs_vars = var_set(&to_pattern(&eq.rhs.expr, is_var));
           let premise_vars: HashSet<Var> =
@@ -616,18 +660,17 @@ impl<'a> Goal<'a> {
 
         // Pick out those scrutinees that occur in the lemma;
         // this is not strictly necessary, but we'd like to get rid of junk like BOUND_EXCEEDED
-        let vars: Vec<Symbol> = self
-          .scrutinees
+        let lemma_var_classes: IdSubst = self
+          .var_classes
           .iter()
-          .filter(|x| lemma_vars.contains(&to_wildcard(x)))
-          .cloned()
+          .filter(|(x, _)| lemma_vars.contains(&to_wildcard(x)))
+          .map(|(x, id)| (x.clone(), *id))
           .collect();
 
         let condition = SmallerVar {
           // create initial subst by looking up the scrutinees in the egraph
-          initial_subst: lookup_vars(&self.egraph, vars.iter()),
-          free_vars: vars,
-          premises: self.premises.clone(),
+          free_vars: lemma_var_classes,
+          premises: premises.clone(),
         };
         let mut added_lemma = false;
         if rhs_vars.is_subset(&lhs_vars) {
@@ -782,6 +825,8 @@ impl<'a> Goal<'a> {
         // Add new variable to context
         new_goal.local_context.insert(fresh_var, arg_type.clone());
         new_goal.add_scrutinee(fresh_var, arg_type, depth);
+        let id = new_goal.egraph.add(SymbolLang::leaf(fresh_var));
+        new_goal.var_classes.insert(fresh_var, id);
 
         if !CONFIG.is_cyclic() && ty == arg_type {
           // This is a recursive constructor parameter:
@@ -823,8 +868,8 @@ impl<'a> Goal<'a> {
       // warn!("removing var {}", var);
       new_goal.egraph.rebuild();
 
-      // TODO: should this be only done when mk_lemmas is false?
-      if var_str.starts_with(GUARD_PREFIX) {
+      // In cyclic mode: add the guard to premises,
+      if CONFIG.is_cyclic() && var_str.starts_with(GUARD_PREFIX) {
         let lhs = ETerm::from_expr(self.guard_exprs[&var_str].clone(), &new_goal.egraph);
         let rhs = ETerm::from_expr(con_app, &new_goal.egraph);
         let eq = Equation { lhs, rhs };
@@ -906,7 +951,7 @@ impl<'a> Goal<'a> {
         .iter()
         .map(|x| {
           // Which class was this param instantiated to?
-          let id = inst.get(to_wildcard(x)).unwrap();
+          let id = inst.get(x).unwrap();
           // Parameters must be canonical (at least in a clean state)
           let canonical = CanonicalFormAnalysis::extract_canonical(&self.egraph, *id).unwrap();
           // Try replacing the case-split variable with its child
@@ -931,10 +976,10 @@ impl<'a> Goal<'a> {
           ETerm::new(&new_term, &mut self.egraph);
         }
         // Add the new instantiation to the list of grounding instantiations
-        let mut new_subst = Subst::with_capacity(new_instantiation.len());
-        for (x, e, _) in replaced_canonicals {
-          new_subst.insert(to_wildcard(&x), e.id);
-        }
+        let new_subst = replaced_canonicals
+          .iter()
+          .map(|(x, e, _)| (x.clone(), e.id))
+          .collect();
         new_instantiations.push(new_subst);
       }
     }

@@ -23,9 +23,7 @@ cargo run -- examples/add.ceg
 
 #### Search
 - Canonical forms for termination checking:
-    - In cyclic mode: when a lemma is created, its premises can contain variables from all previous scrutinees,
-      because they were picked up along the way; 
-      so they all need to be canonicalized *before* checking if the premise has extra variables
+    - Grounding for cyclic mode (store grounding_instantiations per lemma)
 - In cyclic mode: use multi-patterns instead of requiring that the premise has no extra vars?      
 - Blocking variables analysis
 
