@@ -1,12 +1,15 @@
 use egg::*;
 use lazy_static::lazy_static;
 
+use indexmap::IndexMap;
 use std::{collections::HashMap, fmt::Display, str::FromStr};
 use symbolic_expressions::{Sexp, SexpError};
 
 use crate::config::CONFIG;
 
 pub type SSubst = HashMap<String, Sexp>;
+// This is almost like egg's Subst but iterable
+pub type IdSubst = IndexMap<Symbol, Id>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Type {
@@ -137,6 +140,38 @@ pub enum StructuralComparison {
   Incomparable,
 }
 
+/// Check if sub is a subterm of sup
+pub fn is_subterm(sub: &Expr, sup: &Expr) -> StructuralComparison {
+  // Convert both expressions to strings and check if one is a substring of the other
+  let sub_str = sub.to_string();
+  let sup_str = sup.to_string();
+  if sup_str.contains(&sub_str) {
+    if sub_str.len() < sup_str.len() {
+      StructuralComparison::LT
+    } else {
+      StructuralComparison::LE
+    }
+  } else {
+    StructuralComparison::Incomparable
+  }
+}
+
+/// Replace one variable with another in a RecExpr;
+/// also returns whether the variable was found
+pub fn replace_var(expr: &Expr, var: Symbol, replacement: Symbol) -> (Expr, bool) {
+  let mut new_expr = vec![];
+  let mut found = false;
+  for node in expr.as_ref() {
+    if node.op == var {
+      new_expr.push(SymbolLang::leaf(replacement));
+      found = true;
+    } else {
+      new_expr.push(node.clone());
+    }
+  }
+  (new_expr.into(), found)
+}
+
 pub fn map_sexp<F>(f: F, sexp: &Sexp) -> Sexp
 where
   F: Copy + Fn(&str) -> Sexp,
@@ -164,19 +199,11 @@ pub fn contains_function(sexp: &Sexp) -> bool {
   }
 }
 
-fn starts_uppercase(string: &str) -> bool {
-  string
-    .chars()
-    .next()
-    .map(|c| c.is_ascii_uppercase())
-    .unwrap_or(false)
-}
-
 fn find_instantiations_helper(proto: &Sexp, actual: &Sexp, instantiations_map: &mut SSubst) {
   match (proto, actual) {
     (Sexp::Empty, _) | (_, Sexp::Empty) => unreachable!(),
     (Sexp::String(proto_str), actual_sexp) => {
-      if starts_uppercase(proto_str) {
+      if is_constructor(proto_str) {
         // It's a constant in the proto, which means it should be a constant
         // (i.e. a string with the same value) in the actual
         assert!(actual_sexp.is_string());
@@ -258,94 +285,6 @@ pub fn recursively_resolve_variable(var: &str, instantiations: &SSubst) -> Sexp 
     .unwrap_or_else(|| Sexp::String(var.to_string()))
 }
 
-// FIXME: we should track down where these singletons are coming from and
-// prevent them instead of fixing them
-pub fn fix_singletons(sexp: Sexp) -> Sexp {
-  match sexp {
-    Sexp::List(list) => {
-      if list.len() == 1 {
-        fix_singletons(list[0].to_owned())
-      } else {
-        Sexp::List(list.into_iter().map(fix_singletons).collect())
-      }
-    }
-    _ => sexp,
-  }
-}
-
-fn structural_comparison_list(child: &Sexp, ancestors: &[Sexp]) -> StructuralComparison {
-  let mut ancestor_comparison_results = ancestors
-    .iter()
-    .map(|ancestor_elem| structural_comparision(child, ancestor_elem));
-  // Ignore the constructor
-  ancestor_comparison_results.next();
-  for ancestor_comparison_result in ancestor_comparison_results {
-    // If any part is LE/LT, then it is LT because there is additional
-    // structure on the RHS (the constructor).
-    if ancestor_comparison_result == StructuralComparison::LE
-      || ancestor_comparison_result == StructuralComparison::LT
-    {
-      return StructuralComparison::LT;
-    }
-  }
-  StructuralComparison::Incomparable
-}
-
-pub fn structural_comparision(child: &Sexp, ancestor: &Sexp) -> StructuralComparison {
-  match (child, ancestor) {
-    (Sexp::String(child_name), Sexp::String(ancestor_name)) => {
-      // If they are both constructors, they must match
-      if is_constructor(child_name) && is_constructor(ancestor_name) {
-        if child_name == ancestor_name {
-          StructuralComparison::LE
-        } else {
-          StructuralComparison::Incomparable
-        }
-      }
-      // If just the child is a constructor, then it is smaller
-      // If they are both variables and the child is a descendent, it is smaller
-      else if is_constructor(child_name) || is_descendant(child_name, ancestor_name) {
-        StructuralComparison::LT
-      } else if !is_constructor(ancestor_name) && child_name == ancestor_name {
-        StructuralComparison::LE
-      }
-      // Otherwise, we don't know how to compare them
-      else {
-        StructuralComparison::Incomparable
-      }
-    }
-    (Sexp::List(child_list), Sexp::List(ancestor_list)) => {
-      // Try to compare the two as if they matched
-      let mut result = StructuralComparison::LE;
-      let elem_comparison_results = child_list
-        .iter()
-        .zip(ancestor_list.iter())
-        .map(|(child_elem, ancestor_elem)| structural_comparision(child_elem, ancestor_elem));
-      for elem_comparison_result in elem_comparison_results {
-        // If any part is incomparable, the entire thing is.
-        if elem_comparison_result == StructuralComparison::Incomparable {
-          result = StructuralComparison::Incomparable;
-          break;
-        }
-        result = std::cmp::min(result, elem_comparison_result);
-      }
-      // If that fails, try to compare the two as if the child is in any
-      // substructure.
-      if result != StructuralComparison::LT {
-        result = std::cmp::min(result, structural_comparison_list(child, ancestor_list))
-      }
-      result
-    }
-    (Sexp::Empty, Sexp::Empty) => StructuralComparison::LE,
-    (Sexp::String(_), Sexp::List(ancestor_list)) => {
-      structural_comparison_list(child, ancestor_list)
-    }
-    // Consider the (List, String) case?
-    // Does (Empty, _) need to return LE/LT?
-    _ => StructuralComparison::Incomparable,
-  }
-}
-
 pub fn is_constructor(var_name: &str) -> bool {
   var_name.chars().next().unwrap().is_uppercase()
 }
@@ -378,6 +317,21 @@ where
     }
   }
   Pattern::from(pattern_ast)
+}
+
+/// Create a Subst by looking up the given variables in the given egraph
+pub fn lookup_vars<'a, I: Iterator<Item = &'a Symbol>, A: Analysis<SymbolLang>>(
+  egraph: &EGraph<SymbolLang, A>,
+  vars: I,
+) -> IdSubst {
+  let mut subst = IndexMap::new();
+  for var in vars {
+    match egraph.lookup(SymbolLang::leaf(*var)) {
+      Some(id) => subst.insert(var.clone(), id),
+      None => panic!("lookup_vars: variable {} not found in egraph", var),
+    };
+  }
+  subst
 }
 
 // Environment: for now just a map from datatype names to constructor names

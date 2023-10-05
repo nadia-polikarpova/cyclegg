@@ -1,4 +1,4 @@
-use std::{fs::create_dir_all, path::PathBuf};
+use std::{fs::create_dir_all, path::PathBuf, sync::Mutex};
 
 use clap::Parser;
 use lazy_static::lazy_static;
@@ -15,6 +15,11 @@ pub struct Args {
   pub irreducible_only: bool,
   #[clap(short = 'c', long = "no-cond-split")]
   pub no_cond_split: bool,
+  /// Mode
+  #[clap(long = "cyclic")]
+  pub cyclic: bool,
+  #[clap(long = "no-uncyclic")]
+  pub no_uncyclic: bool,
   /// Timeout
   #[clap(short = 't', long = "timeout", default_value = "0")]
   pub timeout: u64,
@@ -47,27 +52,29 @@ pub struct Args {
   /// This disables the name mangling for ease of debugging.
   #[clap(long = "unmangled-names")]
   pub unmangled_names: bool,
-  /// By default, we only emit uncycled proofs: those which don't use cyclic lemmas.
-  ///
-  /// This emits cyclic proofs in addition to uncycled proofs.
-  #[clap(long = "cyclic-proofs")]
-  pub cyclic_proofs: bool,
   /// Do not emit comments in proofs
   #[clap(long = "no-proof-comments")]
   pub no_proof_comments: bool,
   /// Only prove the proposition with this name
   #[clap(long = "prop")]
   pub prop: Option<String>,
-  /// By default, we use a rudimentary structural comparison when checking
-  /// whether the arguments of a cyclic lemma are decreasing.
-  ///
-  /// Enabling this will perform comparisons for checking cyclic proof validity
-  /// using only variables.
-  #[clap(long = "no-structural-comparison")]
-  pub no_structural_comparison: bool,
+}
+
+impl Args {
+  pub fn do_cyclic(&self) -> bool {
+    self.cyclic
+  }
+
+  pub fn do_uncyclic(&self) -> bool {
+    !self.no_uncyclic
+  }
 }
 
 pub struct Config {
+  pub prop: Option<String>,
+  // This is a mutex because we want to be able to change it
+  cyclic_mode: Mutex<bool>,
+  // proof search parameters
   pub max_split_depth: usize,
   pub split_conditionals: bool,
   pub single_rhs: bool,
@@ -84,10 +91,7 @@ pub struct Config {
   pub output_directory: PathBuf,
   pub proofs_directory: PathBuf,
   pub mangle_names: bool,
-  pub cyclic_proofs: bool,
   pub proof_comments: bool,
-  pub prop: Option<String>,
-  pub structural_comparison: bool,
 }
 
 impl Config {
@@ -101,6 +105,7 @@ impl Config {
     }
     let mangle_names = !args.unmangled_names && emit_proofs;
     Self {
+      cyclic_mode: Mutex::new(false),
       max_split_depth: if mangle_names {
         // Why the +1? Because mangling the names prepends a Cyclegg_ to
         // everything, which means that our depth check (which naively looks at
@@ -126,11 +131,17 @@ impl Config {
       output_directory: args.output_directory.clone(),
       proofs_directory: args.proofs_directory.clone(),
       mangle_names,
-      cyclic_proofs: args.cyclic_proofs,
       proof_comments: !args.no_proof_comments,
       prop: args.prop.clone(),
-      structural_comparison: !args.no_structural_comparison,
     }
+  }
+
+  pub fn is_cyclic(&self) -> bool {
+    *self.cyclic_mode.lock().unwrap()
+  }
+
+  pub fn set_cyclic(&self, cyclic: bool) {
+    *self.cyclic_mode.lock().unwrap() = cyclic;
   }
 }
 

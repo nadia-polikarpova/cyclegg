@@ -84,7 +84,7 @@ pub fn explain_top(
   goal: &str,
   state: &mut ProofState,
   eq: &Equation,
-  params: &[String],
+  params: &[Symbol],
   top_level_vars: &HashMap<Symbol, Type>,
   defns: &Defns,
   env: &Env,
@@ -131,12 +131,7 @@ pub fn explain_top(
   // (arg name, arg type), to be used in creating the type.
   let args: Vec<(String, String)> = params
     .iter()
-    .map(|param| {
-      (
-        param.clone(),
-        convert_ty(&top_level_vars[&Symbol::from(param)].repr),
-      )
-    })
+    .map(|param| (param.to_string(), convert_ty(&top_level_vars[param].repr)))
     .collect();
   // println!("{:?}", args);
 
@@ -163,10 +158,8 @@ pub fn explain_top(
     params: params
       .iter()
       .map(|param| {
-        let param_type = top_level_vars
-          .get(&Symbol::from_str(param).unwrap())
-          .unwrap();
-        (param.clone(), param_type.to_string())
+        let param_type = top_level_vars.get(param).unwrap();
+        (param.to_string(), param_type.to_string())
       })
       .collect(),
     lhs: symbolic_expressions::parser::parse_str(&pat_lhs.to_string()).unwrap(),

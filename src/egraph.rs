@@ -1,5 +1,5 @@
 use egg::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Denotation of an egraph (or its subgraph)
 /// is a map from eclass ids to sets of expressions
@@ -91,4 +91,67 @@ pub fn extract_with_node<L: Language, A: Analysis<L>, CF: CostFunction<L>>(
   extractor: &Extractor<CF, L, A>,
 ) -> RecExpr<L> {
   enode.join_recexprs(|id| extractor.find_best(id).1)
+}
+
+/// Variables of a pattern as a set
+pub fn var_set<L: Language>(pattern: &Pattern<L>) -> HashSet<Var> {
+  pattern.vars().iter().cloned().collect()
+}
+
+/// Like egg's Condition, but for searchers
+pub trait SearchCondition<L, N>
+where
+  L: Language,
+  N: Analysis<L>,
+{
+  fn check(&self, egraph: &EGraph<L, N>, eclass: Id, subst: &Subst) -> bool;
+}
+
+/// Conditional searcher
+pub struct ConditionalSearcher<C, S> {
+  /// The searcher we apply first
+  pub searcher: S,
+  /// The condition we will check on each match found by the searcher
+  pub condition: C,
+}
+
+impl<C, S, N, L> Searcher<L, N> for ConditionalSearcher<C, S>
+where
+  C: SearchCondition<L, N>,
+  S: Searcher<L, N>,
+  L: Language,
+  N: Analysis<L>,
+{
+  fn search_eclass_with_limit(
+    &self,
+    egraph: &EGraph<L, N>,
+    eclass: Id,
+    limit: usize,
+  ) -> Option<SearchMatches<L>> {
+    // Use the underlying searcher first
+    let matches = self
+      .searcher
+      .search_eclass_with_limit(egraph, eclass, limit)?;
+    // Filter the matches using the condition
+    let filtered_matches: Vec<Subst> = matches
+      .substs
+      .into_iter()
+      .filter(|subst| self.condition.check(egraph, eclass, subst))
+      .collect();
+    if filtered_matches.is_empty() {
+      // If all substitutions were filtered out,
+      // it's as if this eclass hasn't matched at all
+      None
+    } else {
+      Some(SearchMatches {
+        eclass: matches.eclass,
+        substs: filtered_matches,
+        ast: matches.ast,
+      })
+    }
+  }
+
+  fn vars(&self) -> Vec<Var> {
+    self.searcher.vars()
+  }
 }
