@@ -1,5 +1,6 @@
 use colored::Colorize;
 use egg::*;
+use itertools::Itertools;
 use log::warn;
 use std::collections::HashSet;
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
@@ -621,7 +622,7 @@ impl<'a> Goal<'a> {
     };
 
     // Before creating a cyclic lemma with premises,
-    // we need to update the variables in the premises 
+    // we need to update the variables in the premises
     // with their canonical forms in terms of the current goal variables
     let premises: Vec<Equation> = self
       .premises
@@ -788,8 +789,67 @@ impl<'a> Goal<'a> {
   fn case_split(mut self, state: &mut ProofState<'a>) {
     let new_lemmas = self.add_lemma_rewrites(state);
 
+    let mut blocking_vars: HashSet<_> = HashSet::default();
+
+    for reduction in self.reductions {
+      let x = reduction.searcher.get_pattern_ast().unwrap();
+      let sexp = symbolic_expressions::parser::parse_str(&x.to_string()).unwrap();
+
+      let mut new_sexps: Vec<Sexp> = self
+        .analyze_sexp_for_blocking_vars(&sexp)
+        .into_iter()
+        .map(|x| x.to_string())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(|x| symbolic_expressions::parser::parse_str(x.as_str()).unwrap())
+        .collect();
+
+      for ns in new_sexps.iter_mut() {
+        *ns = self.gen_fresh_vars(ns.clone(), 1);
+      }
+
+      for new_sexp in new_sexps {
+        let mod_searcher: Pattern<SymbolLang> = new_sexp.to_string().parse().unwrap();
+        let bvs: Vec<Var> = mod_searcher
+          .vars()
+          .iter()
+          .filter(|&x| x.to_string().contains("block_"))
+          .cloned()
+          .collect();
+
+        let matches = mod_searcher.search(&self.egraph);
+
+        // look at the e-class analysis for each matched e-class, if any of them has a variable, use it
+        for m in matches {
+          for subst in m.substs {
+            for v in &bvs[0..] {
+              if let Some(&ecid) = subst.get(*v) {
+                match &self.egraph[ecid].data {
+                  CanonicalForm::Var(n) => {
+                    blocking_vars.insert(n.op);
+                  }
+                  _ => (),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // println!("blocking vars: {:?}", blocking_vars);
+    // println!("scrutinees: {:?}", self.scrutinees);
     // Get the next variable to case-split on
-    let var = self.scrutinees.pop_front().unwrap();
+    let blocking = self
+      .scrutinees
+      .iter()
+      .find_position(|x| blocking_vars.contains(x));
+
+    let var = match blocking {
+      Some((i, _)) => self.scrutinees.remove(i).unwrap(),
+      None => self.scrutinees.pop_front().unwrap(),
+    };
+
     let var_str = var.to_string();
     warn!("case-split on {}", var);
     let var_node = SymbolLang::leaf(var);
@@ -904,6 +964,60 @@ impl<'a> Goal<'a> {
         ProofTerm::CaseSplit(var_str, instantiated_cons_and_goals),
       );
     }
+  }
+
+  fn sexp_is_constructor(&self, sexp: &Sexp) -> bool {
+    match sexp {
+      Sexp::String(s) => is_constructor(s),
+      Sexp::List(v) => is_constructor(&v[0].string().unwrap()),
+      _ => false,
+    }
+  }
+
+  fn gen_fresh_vars(&self, sexp: Sexp, mut idx: i32) -> Sexp {
+    let qm = "?".to_string();
+    match sexp {
+      Sexp::String(s) if s == qm => Sexp::String(format!("?block_{}", idx)),
+      Sexp::List(v) => Sexp::List(
+        v.iter()
+          .map(|x| {
+            idx = idx + 1;
+            self.gen_fresh_vars(x.clone(), idx + 1)
+          })
+          .collect(),
+      ),
+      _ => sexp,
+    }
+  }
+
+  fn analyze_sexp_for_blocking_vars(&self, sexp: &Sexp) -> Vec<Sexp> {
+
+    let mut new_exps: Vec<Sexp> = vec![];
+    new_exps.push(sexp.clone());
+
+    if self.sexp_is_constructor(sexp) {
+      let fresh_var_indicator = "?";
+      new_exps.push(Sexp::String(fresh_var_indicator.to_string()));
+    }
+
+    match sexp {
+      Sexp::List(v) => {
+        let head = &v[0];
+        let mut all_replacements: Vec<Vec<Sexp>> = vec![];
+        for (_, sub_arg) in v[1..].iter().enumerate() {
+          all_replacements.push(self.analyze_sexp_for_blocking_vars(sub_arg));
+        }
+        // now we need to create all combinations of these replacements
+        let all_combinations = generate_combinations(&all_replacements);
+        for mut combination in all_combinations {
+          combination.insert(0, head.clone());
+          new_exps.push(Sexp::List(combination));
+        }
+      }
+      _ => {}
+    };
+
+    return new_exps;
   }
 
   /// Save e-graph to file
@@ -1201,4 +1315,27 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
   }
   // All goals have been discharged, so the conjecture is valid:
   (Outcome::Valid, state)
+}
+
+fn combine_options<T: Clone>(
+  vector: &[Vec<T>],
+  index: usize,
+  current_combination: Vec<T>,
+  result: &mut Vec<Vec<T>>,
+) {
+  if index == vector.len() {
+    result.push(current_combination);
+  } else {
+    for option in &vector[index] {
+      let mut new_combination = current_combination.clone();
+      new_combination.push(option.clone());
+      combine_options(vector, index + 1, new_combination, result);
+    }
+  }
+}
+
+fn generate_combinations<T: Clone>(vector: &[Vec<T>]) -> Vec<Vec<T>> {
+  let mut result = Vec::new();
+  combine_options(vector, 0, Vec::new(), &mut result);
+  result
 }
