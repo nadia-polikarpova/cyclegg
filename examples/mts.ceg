@@ -1,0 +1,98 @@
+(
+(data Nat (Z S))
+(:: Z Nat)
+(:: S (-> (Nat) Nat))
+
+(data Pair (a b) (Pair))
+(:: Pair (-> (a b) (Pair a b)))
+
+(data List (a) (Nil Cons))
+(:: Nil  (List a)                    )
+(:: Cons (-> (a (List a)) (List a)))
+
+(:: fst (-> (Pair a b) a))
+(let fst ((Pair ?x ?y)) ?x)
+
+(:: snd (-> (Pair a b) a))
+(let snd ((Pair ?x ?y)) ?y)
+
+(:: add (-> (Nat Nat) Nat))
+(let add (Z      ?y) ?y             )
+(let add ((S ?x) ?y) (S (add ?x ?y)))
+
+(:: max (-> (Nat Nat) Nat))
+(let max (Z      ?y    ) ?y             )
+(let max (?x     Z     ) ?x             )
+(let max ((S ?x) (S ?y)) (S (max ?x ?y)))
+
+(:: map (-> ((-> (a) b) (List a)) (List b)))
+(let map (?f Nil          ) Nil                          )
+(let map (?f (Cons ?x ?xs)) (Cons ($ ?f ?x) (map ?f ?xs)))
+
+(:: sum (-> ((List Nat)) (Nat)))
+(let sum (Nil          ) Z                 )
+(let sum ((Cons ?x ?xs)) (add ?x (sum ?xs)))
+
+(:: maximum (-> ((List Nat)) (Nat)))
+(let maximum ((Cons ?x Nil))           ?x)
+(let maximum ((Cons ?x (Cons ?y ?ys))) (max ?x (maximum (Cons ?y ?ys))))
+
+(:: tails (-> ((List a)) (List (List a))))
+(let tails (Nil)           (Cons Nil Nil))
+(let tails ((Cons ?x ?xs)) (Cons (Cons ?x ?xs) (tails ?xs)))
+
+(:: mts (-> ((List Nat)) (Nat)))
+(let mts (?xs) (maximum (map sum (tails ?xs))))
+
+(:: mts1 (-> ((List Nat)) (Nat)))
+(let mts1 (?xs) (fst (tails1 ?xs)))
+
+(:: tails1 (-> ((List Nat)) (Pair Nat Nat)))
+(let tails1 (Nil)           (Pair Z Z))
+(let tails1 ((Cons ?x ?xs)) (Pair (max (mts1 ?xs) (add ?x (snd (tails1 ?xs)))) (add ?x (snd (tails1 ?xs)))))
+
+(=== test_tails_01 () ()
+  (tails Nil)
+  (Cons Nil Nil)
+)
+
+(=== test_tails_02 () ()
+  (tails (Cons Z Nil))
+  (Cons (Cons Z Nil) (Cons Nil Nil))
+)
+
+(=== test_max_01 () ()
+  (maximum (Cons Z (Cons (S Z) Nil)))
+  (S Z)
+)
+
+(=== test_max_02 () ()
+  (maximum (Cons (S Z) (Cons Z Nil)))
+  (S Z)
+)
+
+(=== test_sum_01 () ()
+  (sum (Cons (S Z) (Cons (S (S Z)) Nil)))
+  (S (S (S Z)))
+)
+
+(=== test_mts_01 () ()
+  (mts (Cons (S Z) (Cons Z (Cons (S (S Z)) Nil))))
+  (S (S (S Z)))
+)
+
+(=== test_mts1_00 () ()
+  (mts1 Nil)
+  Z
+)
+
+(=== test_mts1_01 () ()
+  (mts1 (Cons (S Z) (Cons Z (Cons (S (S Z)) Nil))))
+  (S (S (S Z)))
+)
+
+(=== prop_mts (xs) ((List Nat))
+  (mts xs)
+  (mts1 xs)
+)
+)
