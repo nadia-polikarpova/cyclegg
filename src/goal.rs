@@ -786,7 +786,7 @@ impl<'a> Goal<'a> {
   }
 
   /// Consume this goal and add its case splits to the proof state
-  fn case_split(mut self, state: &mut ProofState<'a>) {
+  fn case_split(mut self, state: &mut ProofState<'a>) -> CaseSplitStatus {
     let new_lemmas = self.add_lemma_rewrites(state);
 
     let mut blocking_vars: HashSet<_> = HashSet::default();
@@ -836,19 +836,18 @@ impl<'a> Goal<'a> {
         }
       }
     }
-
-    // println!("blocking vars: {:?}", blocking_vars);
-    // println!("scrutinees: {:?}", self.scrutinees);
     // Get the next variable to case-split on
     let blocking = self
       .scrutinees
       .iter()
       .find_position(|x| blocking_vars.contains(x));
 
-    let var = match blocking {
-      Some((i, _)) => self.scrutinees.remove(i).unwrap(),
-      None => self.scrutinees.pop_front().unwrap(),
-    };
+    if blocking.is_none() {
+      return CaseSplitStatus::Failure;
+    }
+
+    let var_idx = blocking.unwrap().0;
+    let var = self.scrutinees.remove(var_idx).unwrap();
 
     let var_str = var.to_string();
     warn!("case-split on {}", var);
@@ -964,6 +963,8 @@ impl<'a> Goal<'a> {
         ProofTerm::CaseSplit(var_str, instantiated_cons_and_goals),
       );
     }
+
+    CaseSplitStatus::Success
   }
 
   fn sexp_is_constructor(&self, sexp: &Sexp) -> bool {
@@ -991,7 +992,6 @@ impl<'a> Goal<'a> {
   }
 
   fn analyze_sexp_for_blocking_vars(&self, sexp: &Sexp) -> Vec<Sexp> {
-
     let mut new_exps: Vec<Sexp> = vec![];
     new_exps.push(sexp.clone());
 
@@ -1007,7 +1007,6 @@ impl<'a> Goal<'a> {
         for (_, sub_arg) in v[1..].iter().enumerate() {
           all_replacements.push(self.analyze_sexp_for_blocking_vars(sub_arg));
         }
-        // now we need to create all combinations of these replacements
         let all_combinations = generate_combinations(&all_replacements);
         for mut combination in all_combinations {
           combination.insert(0, head.clone());
@@ -1308,9 +1307,15 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
       }
       return (Outcome::Unknown, state);
     }
-    goal.case_split(&mut state);
+    let case_split_status = goal.case_split(&mut state);
     if CONFIG.verbose {
-      println!("{}", "Case splitting and continuing...".purple());
+      println!("{}", case_split_status);
+      if case_split_status == CaseSplitStatus::Failure {
+        for remaining_goal in &state.goals {
+          println!("{} {}", "Remaining case".yellow(), remaining_goal.name);
+        }
+        return (Outcome::Invalid, state);
+      }
     }
   }
   // All goals have been discharged, so the conjecture is valid:
@@ -1338,4 +1343,23 @@ fn generate_combinations<T: Clone>(vector: &[Vec<T>]) -> Vec<Vec<T>> {
   let mut result = Vec::new();
   combine_options(vector, 0, Vec::new(), &mut result);
   result
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
+pub enum CaseSplitStatus {
+  Success,
+  Failure,
+}
+
+impl std::fmt::Display for CaseSplitStatus {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match *self {
+      CaseSplitStatus::Success => write!(f, "{}", "Case splitting and continuing...".purple()),
+      CaseSplitStatus::Failure => write!(
+        f,
+        "{}",
+        "Cannot case split: no blocking variables found".red()
+      ),
+    }
+  }
 }
