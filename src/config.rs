@@ -58,6 +58,9 @@ pub struct Args {
   /// Only prove the proposition with this name
   #[clap(long = "prop")]
   pub prop: Option<String>,
+
+  #[clap(long = "no-blocking-analysis")]
+  pub no_blocking_analysis: bool,
 }
 
 impl Args {
@@ -92,6 +95,7 @@ pub struct Config {
   pub proofs_directory: PathBuf,
   pub mangle_names: bool,
   pub proof_comments: bool,
+  pub blocking_vars_analysis: bool,
 }
 
 impl Config {
@@ -133,6 +137,7 @@ impl Config {
       mangle_names,
       proof_comments: !args.no_proof_comments,
       prop: args.prop.clone(),
+      blocking_vars_analysis: !args.no_blocking_analysis,
     }
   }
 

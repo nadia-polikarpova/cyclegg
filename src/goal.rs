@@ -12,6 +12,7 @@ use crate::ast::*;
 use crate::config::*;
 use crate::egraph::*;
 use crate::parser::RawEquation;
+use crate::utils::*;
 
 // We will use SymbolLang for now
 pub type Eg = EGraph<SymbolLang, CanonicalFormAnalysis>;
@@ -922,11 +923,12 @@ impl<'a> Goal<'a> {
         .map(|x| symbolic_expressions::parser::parse_str(x.as_str()).unwrap())
         .collect();
 
-      // the patterns we generated contained only ?s instead of ?var, so we go and add fresh variable names everywhere
+      // the patterns we generated contained only ? instead of ?var, so we go and add fresh variable names everywhere
       for ns in new_sexps.iter_mut() {
         *ns = self.gen_fresh_vars(ns.clone(), 1);
       }
 
+      // use these patterns to search over the egraph
       for new_sexp in new_sexps {
         let mod_searcher: Pattern<SymbolLang> = new_sexp.to_string().parse().unwrap();
 
@@ -962,7 +964,14 @@ impl<'a> Goal<'a> {
 
   /// Gets the next variable to case split on using the blocking var analysis
   fn next_scrutinee(&mut self) -> Option<Symbol> {
+    if !CONFIG.blocking_vars_analysis {
+      warn!("blocking var analysis is disabled");
+      return self.scrutinees.pop_front();
+    }
     let blocking_vars = self.find_blocking_vars();
+    if CONFIG.verbose {
+      println!("blocking vars: {:?}", blocking_vars);
+    }
 
     let blocking = self
       .scrutinees
@@ -1015,7 +1024,7 @@ impl<'a> Goal<'a> {
 
     // If this sexp is a constructor application, replace it by ?
     if self.sexp_is_constructor(sexp) {
-      // for now, just indicate by "?" each position where we could have a blocking var, and later go and replace them with fresh vars s
+      // for now, just indicate by "?" each position where we could have a blocking var, and later go and replace them with fresh vars
       let fresh_var_indicator = "?";
       new_exps.push(Sexp::String(fresh_var_indicator.to_string()));
     }
@@ -1232,41 +1241,12 @@ impl std::fmt::Display for Outcome {
 
 pub fn explain_goal_failure(goal: &Goal) {
   println!("{} {}", "Could not prove".red(), goal.name);
+
   println!("{}", "LHS Nodes".cyan());
-  let extractor = egg::Extractor::new(&goal.egraph, AstSize);
-  for lhs_node in goal.egraph[goal.eq.lhs.id].nodes.iter() {
-    let child_rec_exprs: String = lhs_node
-      .children
-      .iter()
-      .map(|child_id| {
-        let (_, best_rec_expr) = extractor.find_best(*child_id);
-        best_rec_expr.to_string()
-      })
-      .collect::<Vec<String>>()
-      .join(" ");
-    if child_rec_exprs.is_empty() {
-      println!("({})", lhs_node);
-    } else {
-      println!("({} {})", lhs_node, child_rec_exprs);
-    }
-  }
+  print_expressions_in_eclass(&goal.egraph, goal.eq.lhs.id);
+
   println!("{}", "RHS Nodes".cyan());
-  for rhs_node in goal.egraph[goal.eq.rhs.id].nodes.iter() {
-    let child_rec_exprs: String = rhs_node
-      .children
-      .iter()
-      .map(|child_id| {
-        let (_, best_rec_expr) = extractor.find_best(*child_id);
-        best_rec_expr.to_string()
-      })
-      .collect::<Vec<String>>()
-      .join(" ");
-    if child_rec_exprs.is_empty() {
-      println!("({})", rhs_node);
-    } else {
-      println!("({} {})", rhs_node, child_rec_exprs);
-    }
-  }
+  print_expressions_in_eclass(&goal.egraph, goal.eq.rhs.id);
 }
 
 /// Top-level interface to the theorem prover.
@@ -1331,7 +1311,11 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
     }
     if let Some(scrutinee) = goal.next_scrutinee() {
       if CONFIG.verbose {
-        println!("{}", "Case splitting and continuing...".purple());
+        println!(
+          "{}: {}",
+          "Case splitting and continuing".purple(),
+          scrutinee.to_string().purple()
+        );
       }
       goal.case_split(scrutinee, &mut state);
     } else {
@@ -1346,29 +1330,4 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
   }
   // All goals have been discharged, so the conjecture is valid:
   (Outcome::Valid, state)
-}
-
-fn cartesian_product_helper<T: Clone>(
-  vector: &[Vec<T>],
-  index: usize,
-  current_combination: Vec<T>,
-  result: &mut Vec<Vec<T>>,
-) {
-  if index == vector.len() {
-    result.push(current_combination);
-  } else {
-    for elem in &vector[index] {
-      let mut new_combination = current_combination.clone();
-      new_combination.push(elem.clone());
-      cartesian_product_helper(vector, index + 1, new_combination, result);
-    }
-  }
-}
-
-/// Given a vector of vectors, generates the "cartesian product" of all the vectors.
-/// TODO: figure out how to use multi_cartesian_product from itertools instead of writing our own
-fn cartesian_product<T: Clone>(vector: &[Vec<T>]) -> Vec<Vec<T>> {
-  let mut result = Vec::new();
-  cartesian_product_helper(vector, 0, Vec::new(), &mut result);
-  result
 }
