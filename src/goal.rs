@@ -965,7 +965,7 @@ impl<'a> Goal<'a> {
   /// Gets the next variable to case split on using the blocking var analysis
   fn next_scrutinee(&mut self) -> Option<Symbol> {
     if !CONFIG.blocking_vars_analysis {
-      warn!("blocking var analysis is disabled");
+      warn!("Blocking var analysis is disabled");
       return self.scrutinees.pop_front();
     }
     let blocking_vars = self.find_blocking_vars();
@@ -1325,7 +1325,11 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
           println!("{} {}", "Remaining case".yellow(), remaining_goal.name);
         }
       }
-      return (Outcome::Invalid, state);
+      if goal.scrutinees.contains(&Symbol::from(BOUND_EXCEEDED)) {
+        return (Outcome::Unknown, state);
+      } else {
+        return (Outcome::Invalid, state);
+      }
     }
   }
   // All goals have been discharged, so the conjecture is valid:
