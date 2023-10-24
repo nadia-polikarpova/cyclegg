@@ -1,5 +1,6 @@
 use colored::Colorize;
 use egg::*;
+use itertools::Itertools;
 use log::warn;
 use std::collections::HashSet;
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
@@ -11,6 +12,7 @@ use crate::ast::*;
 use crate::config::*;
 use crate::egraph::*;
 use crate::parser::RawEquation;
+use crate::utils::*;
 
 // We will use SymbolLang for now
 pub type Eg = EGraph<SymbolLang, CanonicalFormAnalysis>;
@@ -621,7 +623,7 @@ impl<'a> Goal<'a> {
     };
 
     // Before creating a cyclic lemma with premises,
-    // we need to update the variables in the premises 
+    // we need to update the variables in the premises
     // with their canonical forms in terms of the current goal variables
     let premises: Vec<Equation> = self
       .premises
@@ -785,11 +787,9 @@ impl<'a> Goal<'a> {
   }
 
   /// Consume this goal and add its case splits to the proof state
-  fn case_split(mut self, state: &mut ProofState<'a>) {
+  fn case_split(mut self, var: Symbol, state: &mut ProofState<'a>) {
     let new_lemmas = self.add_lemma_rewrites(state);
 
-    // Get the next variable to case-split on
-    let var = self.scrutinees.pop_front().unwrap();
     let var_str = var.to_string();
     warn!("case-split on {}", var);
     let var_node = SymbolLang::leaf(var);
@@ -904,6 +904,150 @@ impl<'a> Goal<'a> {
         ProofTerm::CaseSplit(var_str, instantiated_cons_and_goals),
       );
     }
+  }
+
+  fn find_blocking_vars(&self) -> HashSet<Symbol> {
+    let mut blocking_vars: HashSet<_> = HashSet::default();
+
+    for reduction in self.reductions {
+      let x = reduction.searcher.get_pattern_ast().unwrap();
+      let sexp = symbolic_expressions::parser::parse_str(&x.to_string()).unwrap();
+
+      // Hack to dedup the new patterns (sexps) we generated
+      let mut new_sexps: Vec<Sexp> = self
+        .analyze_sexp_for_blocking_vars(&sexp)
+        .into_iter()
+        .map(|x| x.to_string())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .map(|x| symbolic_expressions::parser::parse_str(x.as_str()).unwrap())
+        .collect();
+
+      // the patterns we generated contained only ? instead of ?var, so we go and add fresh variable names everywhere
+      for ns in new_sexps.iter_mut() {
+        *ns = self.gen_fresh_vars(ns.clone(), 1);
+      }
+
+      // use these patterns to search over the egraph
+      for new_sexp in new_sexps {
+        let mod_searcher: Pattern<SymbolLang> = new_sexp.to_string().parse().unwrap();
+
+        // for each new pattern, find the pattern variables in blocking positions so that we can use them to look up the substs later
+        let bvs: Vec<Var> = mod_searcher
+          .vars()
+          .iter()
+          .filter(|&x| x.to_string().contains("block_"))
+          .cloned()
+          .collect();
+
+        let matches = mod_searcher.search(&self.egraph);
+
+        // look at the e-class analysis for each matched e-class, if any of them has a variable, use it
+        for m in matches {
+          for subst in m.substs {
+            for v in &bvs[0..] {
+              if let Some(&ecid) = subst.get(*v) {
+                match &self.egraph[ecid].data {
+                  CanonicalForm::Var(n) => {
+                    blocking_vars.insert(n.op);
+                  }
+                  _ => (),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    blocking_vars
+  }
+
+  /// Gets the next variable to case split on using the blocking var analysis
+  fn next_scrutinee(&mut self) -> Option<Symbol> {
+    if !CONFIG.blocking_vars_analysis {
+      warn!("Blocking var analysis is disabled");
+      return self.scrutinees.pop_front();
+    }
+    let blocking_vars = self.find_blocking_vars();
+    if CONFIG.verbose {
+      println!("blocking vars: {:?}", blocking_vars);
+    }
+
+    let blocking = self
+      .scrutinees
+      .iter()
+      .find_position(|x| blocking_vars.contains(x));
+
+    if blocking.is_none() {
+      return None;
+    }
+
+    let var_idx = blocking.unwrap().0;
+    self.scrutinees.remove(var_idx)
+  }
+
+  fn sexp_is_constructor(&self, sexp: &Sexp) -> bool {
+    match sexp {
+      Sexp::String(s) => is_constructor(s),
+      Sexp::List(v) => is_constructor(&v[0].string().unwrap()),
+      _ => false,
+    }
+  }
+
+  fn gen_fresh_vars(&self, sexp: Sexp, mut idx: i32) -> Sexp {
+    let qm = "?".to_string();
+    match sexp {
+      Sexp::String(s) if s == qm => Sexp::String(format!("?block_{}", idx)),
+      Sexp::List(v) => Sexp::List(
+        v.iter()
+          .map(|x| {
+            idx = idx + 1;
+            self.gen_fresh_vars(x.clone(), idx + 1)
+          })
+          .collect(),
+      ),
+      _ => sexp,
+    }
+  }
+
+  /// Looks at an sexp representing a rewrite (or part of a rewrite) to determine where blocking vars might be
+  /// e.g. if we have a rule that looks like `foo Z (Cons Z ?xs)` => ...)
+  /// then we want to generate patterns like
+  ///   1. `foo ?fresh1 (Cons Z ?xs)`
+  ///   2. `foo ?fresh1 ?fresh2`
+  ///   3. `foo ?fresh1 (Cons ?fresh2 ?xs)`
+  ///   4. `foo Z ?fresh2`
+  ///   5. `foo Z (Cons ?fresh1 ?xs)`
+  fn analyze_sexp_for_blocking_vars(&self, sexp: &Sexp) -> Vec<Sexp> {
+    let mut new_exps: Vec<Sexp> = vec![];
+    new_exps.push(sexp.clone());
+
+    // If this sexp is a constructor application, replace it by ?
+    if self.sexp_is_constructor(sexp) {
+      // for now, just indicate by "?" each position where we could have a blocking var, and later go and replace them with fresh vars
+      let fresh_var_indicator = "?";
+      new_exps.push(Sexp::String(fresh_var_indicator.to_string()));
+    }
+
+    // also recursively analyse its children to find other potential blocking arguments
+    match sexp {
+      Sexp::List(v) => {
+        let head = &v[0];
+        let mut all_replacements: Vec<Vec<Sexp>> = vec![];
+        for (_, sub_arg) in v[1..].iter().enumerate() {
+          all_replacements.push(self.analyze_sexp_for_blocking_vars(sub_arg));
+        }
+        // get all possible subsets of the replacements (i.e. every subset of constructor applications replaced by fresh pattern vars)
+        let all_combinations = cartesian_product(&all_replacements);
+        for mut combination in all_combinations {
+          combination.insert(0, head.clone());
+          new_exps.push(Sexp::List(combination));
+        }
+      }
+      _ => {}
+    };
+
+    return new_exps;
   }
 
   /// Save e-graph to file
@@ -1097,41 +1241,12 @@ impl std::fmt::Display for Outcome {
 
 pub fn explain_goal_failure(goal: &Goal) {
   println!("{} {}", "Could not prove".red(), goal.name);
+
   println!("{}", "LHS Nodes".cyan());
-  let extractor = egg::Extractor::new(&goal.egraph, AstSize);
-  for lhs_node in goal.egraph[goal.eq.lhs.id].nodes.iter() {
-    let child_rec_exprs: String = lhs_node
-      .children
-      .iter()
-      .map(|child_id| {
-        let (_, best_rec_expr) = extractor.find_best(*child_id);
-        best_rec_expr.to_string()
-      })
-      .collect::<Vec<String>>()
-      .join(" ");
-    if child_rec_exprs.is_empty() {
-      println!("({})", lhs_node);
-    } else {
-      println!("({} {})", lhs_node, child_rec_exprs);
-    }
-  }
+  print_expressions_in_eclass(&goal.egraph, goal.eq.lhs.id);
+
   println!("{}", "RHS Nodes".cyan());
-  for rhs_node in goal.egraph[goal.eq.rhs.id].nodes.iter() {
-    let child_rec_exprs: String = rhs_node
-      .children
-      .iter()
-      .map(|child_id| {
-        let (_, best_rec_expr) = extractor.find_best(*child_id);
-        best_rec_expr.to_string()
-      })
-      .collect::<Vec<String>>()
-      .join(" ");
-    if child_rec_exprs.is_empty() {
-      println!("({})", rhs_node);
-    } else {
-      println!("({} {})", rhs_node, child_rec_exprs);
-    }
-  }
+  print_expressions_in_eclass(&goal.egraph, goal.eq.rhs.id);
 }
 
 /// Top-level interface to the theorem prover.
@@ -1194,9 +1309,27 @@ pub fn prove(mut goal: Goal) -> (Outcome, ProofState) {
       }
       return (Outcome::Unknown, state);
     }
-    goal.case_split(&mut state);
-    if CONFIG.verbose {
-      println!("{}", "Case splitting and continuing...".purple());
+    if let Some(scrutinee) = goal.next_scrutinee() {
+      if CONFIG.verbose {
+        println!(
+          "{}: {}",
+          "Case splitting and continuing".purple(),
+          scrutinee.to_string().purple()
+        );
+      }
+      goal.case_split(scrutinee, &mut state);
+    } else {
+      if CONFIG.verbose {
+        println!("{}", "Cannot case split: no blocking variables found".red());
+        for remaining_goal in &state.goals {
+          println!("{} {}", "Remaining case".yellow(), remaining_goal.name);
+        }
+      }
+      if goal.scrutinees.contains(&Symbol::from(BOUND_EXCEEDED)) {
+        return (Outcome::Unknown, state);
+      } else {
+        return (Outcome::Invalid, state);
+      }
     }
   }
   // All goals have been discharged, so the conjecture is valid:

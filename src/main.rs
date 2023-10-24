@@ -9,6 +9,7 @@ pub mod egraph;
 pub mod explain;
 pub mod goal;
 pub mod parser;
+pub mod utils;
 
 use config::{ARGS, CONFIG};
 use explain::explain_top;
